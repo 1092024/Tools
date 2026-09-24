@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Model Name 到 Owner 自動比對系統</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SheetJS (Excel 處理庫) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- FontAwesome 圖示 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  </style>
+</head>
+<body class="p-6 md:p-10 text-slate-800">
+
+  <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-file-excel text-emerald-600"></i> Model Name 比對與 Owner 自動填入系統
+        </h1>
+        <p class="text-sm text-slate-500 mt-1">自動排除空白列、公式覆寫 Model Name、比對 Owner。下載一律填入純英文名稱，網頁端可自由切換預覽格式。</p>
+      </div>
+      <button onclick="toggleReferenceModal()" class="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition font-medium flex items-center gap-2">
+        <i class="fa-solid fa-database"></i> 檢視對照資料庫 (<span id="refCount">0</span> 筆)
+      </button>
+    </div>
+
+    <!-- Upload & Settings -->
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- Drag & Drop Area -->
+      <div class="md:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <label for="excelFile" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/30 transition rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer text-center block h-full">
+          <i class="fa-solid fa-cloud-arrow-up text-4xl text-emerald-600 mb-3"></i>
+          <span class="font-semibold text-slate-700">點擊上傳或拖曳 Excel 檔案至此 (.xlsx / .xls)</span>
+          <span class="text-xs text-slate-400 mt-1">系統將排除無 Model Name 列、公式覆寫原欄位並填入純英文 Owner</span>
+          <input type="file" id="excelFile" accept=".xlsx, .xls" class="hidden">
+        </label>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+        <div>
+          <h3 class="font-bold text-slate-800 mb-2 flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-indigo-600"></i> Dashboard 預覽格式
+          </h3>
+          <p class="text-xs text-slate-400 mb-3">僅變更網頁顯示；Excel 下載一律統一為純英文名</p>
+          <div class="space-y-2">
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="previewFormat" value="en" class="text-emerald-600 focus:ring-emerald-500">
+              <span>僅英文名 (例: Chloe Chou)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="previewFormat" value="cn" class="text-emerald-600 focus:ring-emerald-500">
+              <span>僅中文名 (例: 周玉惠)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="radio" name="previewFormat" value="full" checked class="text-emerald-600 focus:ring-emerald-500">
+              <span>英文 + 中文 (例: Chloe Chou (周玉惠))</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 雙下載按鈕區 -->
+        <div class="space-y-2 pt-2 border-t border-slate-100">
+          <button id="downloadAllBtn" onclick="downloadAllExcel()" disabled class="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm">
+            <i class="fa-solid fa-download"></i> 下載整理後全部 Excel (純英文 Owner)
+          </button>
+          <button id="downloadFilteredBtn" onclick="downloadFilteredExcel()" disabled class="w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm">
+            <i class="fa-solid fa-filter"></i> 下載篩選結果 Excel (純英文 Owner)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Preview Table & Excel-like Filter Toolbar -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
+        <div class="flex items-center gap-2">
+          <h3 class="font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-table"></i> 比對結果預覽
+          </h3>
+          <span id="matchStats" class="text-xs bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-medium">尚未上傳檔案</span>
+        </div>
+
+        <!-- Excel-style Filter Bar -->
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <!-- 篩選狀態 -->
+          <div class="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 shadow-sm">
+            <i class="fa-solid fa-filter text-slate-400"></i>
+            <label for="statusFilter" class="text-slate-500 font-medium">狀態篩選：</label>
+            <select id="statusFilter" onchange="renderTable()" class="bg-transparent focus:outline-none text-slate-700 cursor-pointer">
+              <option value="all">全部顯示</option>
+              <option value="unmatched">僅顯示未匹配 (查無對照)</option>
+              <option value="matched">僅顯示已匹配</option>
+            </select>
+          </div>
+
+          <!-- 排序規則 (預設未匹配置頂) -->
+          <div class="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 shadow-sm">
+            <i class="fa-solid fa-arrow-down-short-wide text-slate-400"></i>
+            <label for="sortOrder" class="text-slate-500 font-medium">排序：</label>
+            <select id="sortOrder" onchange="renderTable()" class="bg-transparent focus:outline-none text-slate-700 font-semibold text-emerald-700 cursor-pointer">
+              <option value="unmatchedFirst" selected>❗ 未匹配置頂 (優先處理)</option>
+              <option value="matchedFirst">已匹配置頂</option>
+              <option value="original">原始 Excel 順序</option>
+            </select>
+          </div>
+
+          <!-- 關鍵字搜尋 -->
+          <div class="relative">
+            <input type="text" id="tableSearch" oninput="renderTable()" placeholder="快速搜尋表格..." class="pl-7 pr-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs w-36 sm:w-48">
+            <i class="fa-solid fa-magnifying-glass text-slate-400 absolute left-2.5 top-2.5"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto max-h-[500px] p-2">
+        <table class="w-full text-left text-xs border-collapse">
+          <thead id="tableHead" class="bg-slate-100 text-slate-600 font-semibold uppercase sticky top-0 border-b">
+            <tr>
+              <th class="p-3">原始 Model Name</th>
+              <th class="p-3">公式後 Model Name</th>
+              <th class="p-3">Product P/N</th>
+              <th class="p-3">Manufacturer</th>
+              <th class="p-3">Owner (自動比對結果)</th>
+              <th class="p-3">比對狀態</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-slate-100">
+            <tr>
+              <td colspan="6" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Reference Rules -->
+  <div id="refModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+        <h3 class="font-bold text-slate-800">最新對照資料庫 (<span id="modalRefCount">0</span> 筆)</h3>
+        <button onclick="toggleReferenceModal()" class="text-slate-400 hover:text-slate-600 text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-4 border-b bg-slate-50/50 flex gap-2">
+        <input type="text" id="searchInput" oninput="renderRefTable()" placeholder="搜尋 Project、Customer 或 Owner..." class="px-3 py-1.5 text-xs border rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </div>
+      <div class="overflow-y-auto p-4 flex-1">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-100 text-slate-600 font-semibold sticky top-0">
+            <tr>
+              <th class="p-2">中文名</th>
+              <th class="p-2">英文名</th>
+              <th class="p-2">Customer</th>
+              <th class="p-2">Project</th>
+            </tr>
+          </thead>
+          <tbody id="refTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const referenceData = [
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "SpaceX", "project": "SpaceX L11"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Katmai_Carlsbad"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Retread"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Tahiti"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Apollo"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Aurora"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "GB200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "GB300_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "VR200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "Vera Rubin Ultra_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Softbank", "project": "VR200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "SpaceX", "project": "VR200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "SpaceX", "project": "NVL72_VRU"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Oracle", "project": "B300 AC"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Oracle", "project": "E6_IS"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Oracle", "project": "G6-8HD"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Graphcore", "project": "POD32"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Graphcore", "project": "IZANAGI"},
+      {"nameCn": "林佩庭", "nameEn": "Lynn Lin", "vendor": "Nvidia", "project": "PBR BOM support"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Dagny(MCV3)"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Hanuman81/82"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Mimino"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "PDB MAX"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "PDB_MAX"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Hopper88"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Monza 76/88"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Monza76"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Monza88"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "UPDB-3P6K(RESPIN)"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Graviton 6 / LYNX"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Nvidia", "project": "VR NVL144(All System)"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Nvidia", "project": "Kyber Ultra(All System)"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Nvidia", "project": "Language Processing Unit (LPU)"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Softbank", "project": "VR200"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "White box", "project": "Yoxi_EIA_LC"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "White box", "project": "Newell"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "White box", "project": "Irene"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Qualcomm", "project": "Wall-E"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Qualcomm", "project": "Gloria Edge"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Ambrose63(Fairooz)"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Sedona"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Cub Scout"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Tiger(Graviton 5)"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Tiger49/56"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Google", "project": "VR200_PCBA"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Google", "project": "Tiger11_12"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Google", "project": "Tiger49_54"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Katana"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Katana_Redesign"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Durango"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Cascade_new"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Tahiti respin-Black Pearl (Gizo)"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Apollo Redesign"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Alder"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Alder SAS Dongle Respin"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "Turing"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "HGX4"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G3-8C"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G4-8C"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G4-8C- MI300X(AMD SKU)"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "Oracle Oberon GB200"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G5-8C"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Mink"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Moonlight"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Stoat"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Fisher"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Antero"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "PERLIS"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G5-8HD B200 LC"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "NR1S"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Spotted cow"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Spotted_cow"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "Spectrum 6"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "Quicksliver"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C219B"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C4A15(GB300)"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "VR NVL144(C9A16)"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C2080"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C2195"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "DC-SCM(M1110)"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C4A14 Samoa"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "SpaceX", "project": "SpaceXAI"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "White box", "project": "Astoria(TSMC)"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "White box", "project": "Beaverton"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Microsoft", "project": "C4144"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Oracle", "project": "GB300"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Oracle", "project": "VR Rubin"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Microsoft", "project": "C2184 GP RISER"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Google", "project": "VR300"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Oracle", "project": "NVL8"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Coreweave", "project": "Vera C2"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "White box", "project": "Yoxi(MGX 4U)"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali01-41/49(Hooter)"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali09"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali01~08"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "K2V5-DVD"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "K2V5_DVD"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Fraser(Ambrose66)"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Hanuman86"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Makalu"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Makalu 49/56"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali56/59"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Monza83/84"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Monza83_84"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Sunflare"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Graviton 6 / LYNX"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "White box", "project": "Ti PSU(ORV3PSU & ORV3Shelf)"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "White box", "project": "Astor"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "Ramon", "project": "NN2"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Arapaho"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Sandhawk"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Saber(Lenovo)"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Vino 2U/4U"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Bowie/Dagger"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Dagger2"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "Maxwell", "project": "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) VR200 Earth"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "Makalu 56 PCBA sub-set"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "M5 MAC"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "Tiger42"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "VENUS_NEPTUNE"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hopper78"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Qualcomm", "project": "5G_DU_Card"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "DUO"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Rover16C/RoverC16C"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman 01~06(Only L10&L12)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman 11(Only L10&L12)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman Rising Power(Only L10&L12)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Qualcomm", "project": "ISP"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Ramon", "project": "Gen 1"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Ramon", "project": "Gen1"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Ramon", "project": "NuPOD"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Qualcomm", "project": "AI100U"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Harrier"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Husky"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Maxwell", "project": "HPR (High Power Rack)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Maxwell", "project": "HPRV3 Anacapa(12KW)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Maxwell", "project": "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) HPRv3 Mars"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman PCBA"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Dagny(MCV2)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "UPDB-3P6K"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "Microsoft", "project": "C2030"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "White box", "project": "HGX R200 NVL8"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "White box", "project": "HGX_RUBIN_NVL"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "White box", "project": "Saint Elias"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "NetApp", "project": "Brunello"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "NetApp", "project": "Baker"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "Maxwell", "project": "T11 Vera (YV5 Platform)"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "Maxwell", "project": "Bletchley"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2010 Respin"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2010/A2110/A2210"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2040"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2051"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2080 (Cerberus)"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2061(FC400(Fungible))"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "C2010 2U sensor"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "C2030 M2 riser"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Maxwell", "project": "Customer：Clemente = Ingrasys：Mercury"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Google", "project": "VR200"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Google", "project": "VR300"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C2190"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C2141"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Nvidia", "project": "NVL-GB200(All System)"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Nvidia", "project": "NVL-GB300(All System)"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Nvidia", "project": "NVL4-P4132"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "D2110(power adapter module)"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C2154"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "A2010 Test card"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "A2040 Test card"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "D2112"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C4143"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "AVA Card"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "Management 1G Switch"}
+    ];
+
+
+    let globalWorkbook = null;
+    let globalJsonData = [];
+    let originalFileName = "";
+    let originalHeaders = [];
+    let modelNameKey = "Model Name";
+    let ownerKey = "Owner";
+    let removedEmptyCount = 0;
+
+    document.getElementById('refCount').innerText = referenceData.length;
+    document.getElementById('modalRefCount').innerText = referenceData.length;
+
+    // 格式切換僅影響 Dashboard 預覽
+    document.querySelectorAll('input[name="previewFormat"]').forEach(radio => {
+      radio.addEventListener('change', renderTable);
+    });
+
+    document.getElementById('excelFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      originalFileName = file.name;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        globalWorkbook = XLSX.read(data, { type: 'array' });
+        
+        const firstSheetName = globalWorkbook.SheetNames[0];
+        const worksheet = globalWorkbook.Sheets[firstSheetName];
+
+        const headerRowArray = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        if (headerRowArray && headerRowArray.length > 0) {
+          originalHeaders = headerRowArray[0].map(h => String(h || "").trim()).filter(h => h !== "");
+        } else {
+          originalHeaders = [];
+        }
+
+        modelNameKey = originalHeaders.find(h => /^(model name|model|project)$/i.test(h)) || "Model Name";
+        ownerKey = originalHeaders.find(h => /^owner$/i.test(h)) || "Owner";
+
+        if (!originalHeaders.includes(ownerKey)) {
+          originalHeaders.push(ownerKey);
+        }
+
+        const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+        // 1. 刪除沒有 Model Name 的資料列
+        const originalTotal = rawJson.length;
+        const validRows = rawJson.filter(row => {
+          const rawVal = row[modelNameKey] || row["Model Name"] || row["Model"] || row["Project"] || "";
+          return String(rawVal).trim() !== "";
+        });
+
+        removedEmptyCount = originalTotal - validRows.length;
+
+        // 2. 執行公式擷取並覆寫原欄位，同時保留原始字串供 Dashboard 預覽
+        globalJsonData = validRows.map((row, idx) => {
+          const currentModelVal = row[modelNameKey] || row["Model Name"] || row["Model"] || row["Project"] || "";
+          const extractedVal = extractByExcelFormula(currentModelVal);
+          
+          return {
+            ...row,
+            __rawModelName: currentModelVal,
+            [modelNameKey]: extractedVal,
+            __origIndex: idx
+          };
+        });
+
+        // 3. 比對 Owner (寫入純英文至資料層，確保下載皆為純英文)
+        processAndRender();
+        document.getElementById('downloadAllBtn').disabled = false;
+        document.getElementById('downloadFilteredBtn').disabled = false;
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function extractByExcelFormula(rawVal) {
+      if (!rawVal) return "";
+      const str = String(rawVal).trim();
+      const firstSpaceIdx = str.indexOf(" ");
+      if (firstSpaceIdx === -1) {
+        return str;
+      }
+      return str.substring(firstSpaceIdx + 1).trim();
+    }
+
+    function normalizeStr(str) {
+      if (!str) return "";
+      return String(str)
+        .toLowerCase()
+        .replace(/[\s\-_/]/g, "");
+    }
+
+    function findOwner(modelName, rowData = {}) {
+      const rawModel = String(modelName || "").trim().toLowerCase();
+      const normModel = normalizeStr(modelName);
+
+      const rawPn = String(
+        rowData["Product P/N"] || 
+        rowData["Part Number"] || 
+        rowData["PN"] || 
+        ""
+      ).trim();
+
+      const contextText = (
+        rawModel + " " +
+        rawPn + " " +
+        String(rowData["Manufacturer"] || "") + " " +
+        String(rowData["Customer"] || "") + " " +
+        String(rowData["Vendor"] || "")
+      ).toLowerCase();
+      const normContext = normalizeStr(contextText);
+
+      const isGpuDgxRubin = normModel === "gpudgxwrubin" || rawModel.includes("gpudgxw/rubin");
+      const isGpuDgxVera = normModel === "gpudgxwithvera" || rawModel.includes("gpudgxwithvera");
+      const isSpecialGpuModel = isGpuDgxRubin || isGpuDgxVera;
+
+      const isSpecialExcludedPn = /^p[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/i.test(rawPn);
+
+      if (isSpecialGpuModel && isSpecialExcludedPn) {
+        return null;
+      }
+
+      if (isSpecialGpuModel) {
+        return {
+          nameCn: "胡乃蓉",
+          nameEn: "Nana Hu",
+          vendor: "Nvidia",
+          project: isGpuDgxVera ? "GPUDGXWITHVERA" : "GPUDGXW/RUBIN"
+        };
+      }
+
+      if (contextText.includes("softbank") || normContext.includes("softbank")) {
+        return {
+          nameCn: "胡乃蓉",
+          nameEn: "Nana Hu",
+          vendor: "Softbank",
+          project: "VR200 (Softbank)"
+        };
+      }
+
+      const hasSpace = contextText.includes("space") || normContext.includes("spacex");
+      const hasL11 = contextText.includes("l11") || normContext.includes("l11");
+      if (hasSpace && hasL11) {
+        return {
+          nameCn: "張懷文",
+          nameEn: "Sharon Chang",
+          vendor: "SpaceX",
+          project: "SpaceX L11"
+        };
+      }
+
+      if (!normModel) return null;
+
+      let candidates = referenceData.filter(r => {
+        const normProj = normalizeStr(r.project);
+        const rawProj = r.project.toLowerCase();
+        return normProj === normModel || 
+               normModel.includes(normProj) || 
+               normProj.includes(normModel) ||
+               rawModel.includes(rawProj) || 
+               rawProj.includes(rawModel);
+      });
+
+      if (candidates.length === 0) return null;
+      if (candidates.length === 1) return candidates[0];
+
+      const matchedByVendor = candidates.find(c => {
+        const vendor = c.vendor.toLowerCase();
+        const normVendor = normalizeStr(c.vendor);
+        return contextText.includes(vendor) || normContext.includes(normVendor);
+      });
+
+      if (matchedByVendor) return matchedByVendor;
+
+      const exactMatch = candidates.find(c => normalizeStr(c.project) === normModel);
+      return exactMatch || candidates[0];
+    }
+
+    // Dashboard 預覽用的格式轉換函式
+    function formatOwnerForDashboard(ownerObj) {
+      if (!ownerObj) return "";
+      const format = document.querySelector('input[name="previewFormat"]:checked').value;
+      if (format === 'en') return ownerObj.nameEn;
+      if (format === 'cn') return ownerObj.nameCn;
+      return `${ownerObj.nameEn} (${ownerObj.nameCn})`;
+    }
+
+    function processAndRender() {
+      if (!globalJsonData || globalJsonData.length === 0) return;
+
+      let matchedCount = 0;
+
+      globalJsonData.forEach(row => {
+        const currentModel = row[modelNameKey] || "";
+        const ownerObj = findOwner(currentModel, row);
+        if (ownerObj) {
+          // 下載統一填入純英文名
+          row[ownerKey] = ownerObj.nameEn;
+          row["__ownerObj"] = ownerObj;
+          row["__isMatched"] = true;
+          matchedCount++;
+        } else {
+          row[ownerKey] = "";
+          row["__ownerObj"] = null;
+          row["__isMatched"] = false;
+        }
+      });
+
+      const filterNotice = removedEmptyCount > 0 ? ` (已排除 ${removedEmptyCount} 筆無 Model Name)` : "";
+      document.getElementById('matchStats').innerText = `共處理 ${globalJsonData.length} 筆${filterNotice}，成功匹配 ${matchedCount} 筆 (${Math.round((matchedCount/globalJsonData.length)*100)}%)`;
+
+      renderTable();
+    }
+
+    function getProcessedData() {
+      if (!globalJsonData || globalJsonData.length === 0) return [];
+
+      const statusFilter = document.getElementById('statusFilter').value;
+      const sortOrder = document.getElementById('sortOrder').value;
+      const searchQuery = (document.getElementById('tableSearch').value || "").trim().toLowerCase();
+      const normQuery = normalizeStr(searchQuery);
+
+      let list = globalJsonData.filter(row => {
+        if (statusFilter === 'unmatched' && row.__isMatched) return false;
+        if (statusFilter === 'matched' && !row.__isMatched) return false;
+
+        if (searchQuery) {
+          const rawModel = String(row.__rawModelName || "");
+          const formulaModel = String(row[modelNameKey] || "");
+          const pn = String(row["Product P/N"] || row["PN"] || "");
+          const mfg = String(row["Manufacturer"] || "");
+          const ownerEn = String(row[ownerKey] || "");
+          const ownerCn = row.__ownerObj ? row.__ownerObj.nameCn : "";
+
+          const matchNormal = 
+            rawModel.toLowerCase().includes(searchQuery) ||
+            formulaModel.toLowerCase().includes(searchQuery) ||
+            pn.toLowerCase().includes(searchQuery) ||
+            mfg.toLowerCase().includes(searchQuery) ||
+            ownerEn.toLowerCase().includes(searchQuery) ||
+            ownerCn.toLowerCase().includes(searchQuery);
+
+          const matchNormalized = 
+            (normQuery && normalizeStr(formulaModel).includes(normQuery)) ||
+            (normQuery && normalizeStr(pn).includes(normQuery));
+
+          if (!matchNormal && !matchNormalized) {
+            return false;
+          }
+        }
+        return true;
+      });
+
+      list.sort((a, b) => {
+        if (sortOrder === 'unmatchedFirst') {
+          if (a.__isMatched !== b.__isMatched) return a.__isMatched ? 1 : -1;
+        } else if (sortOrder === 'matchedFirst') {
+          if (a.__isMatched !== b.__isMatched) return a.__isMatched ? -1 : 1;
+        }
+        return a.__origIndex - b.__origIndex;
+      });
+
+      return list;
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tableBody');
+      if (!globalJsonData || globalJsonData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td></tr>`;
+        return;
+      }
+
+      const displayList = getProcessedData();
+
+      if (displayList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">查無符合篩選條件的資料</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = "";
+      displayList.forEach(row => {
+        const rawModel = row.__rawModelName || "";
+        const formulaModel = row[modelNameKey] || "";
+        const isMatched = row.__isMatched;
+        const ownerDisplay = isMatched ? formatOwnerForDashboard(row.__ownerObj) : "";
+
+        const tr = document.createElement('tr');
+        tr.className = isMatched ? "hover:bg-slate-50 transition" : "bg-rose-50/40 hover:bg-rose-50 transition";
+        tr.innerHTML = `
+          <td class="p-3 text-slate-400">${rawModel || "-"}</td>
+          <td class="p-3 font-semibold text-slate-900">${formulaModel || "-"}</td>
+          <td class="p-3 text-slate-500">${row["Product P/N"] || row["PN"] || "-"}</td>
+          <td class="p-3 text-slate-500">${row["Manufacturer"] || "-"}</td>
+          <td class="p-3 font-semibold ${isMatched ? 'text-emerald-700' : 'text-rose-500 italic'}">${ownerDisplay || "未匹配"}</td>
+          <td class="p-3">
+            ${isMatched 
+              ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-solid fa-check text-[9px]"></i> 已匹配</span>' 
+              : '<span class="bg-rose-100 text-rose-700 text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation text-[9px]"></i> 查無對照</span>'}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function getDateString() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}${month}${day}`;
+    }
+
+    // 格式化匯出資料：嚴格確保欄位順序與原始 Excel 一致，且 Owner 一律為純英文名
+    function cleanDataForExport(dataList) {
+      return dataList.map(item => {
+        const clean = {};
+        if (originalHeaders && originalHeaders.length > 0) {
+          originalHeaders.forEach(header => {
+            clean[header] = item[header] !== undefined ? item[header] : "";
+          });
+        } else {
+          Object.keys(item).forEach(key => {
+            if (!key.startsWith("__")) {
+              clean[key] = item[key];
+            }
+          });
+        }
+        return clean;
+      });
+    }
+
+    function downloadAllExcel() {
+      if (!globalWorkbook || !globalJsonData || globalJsonData.length === 0) return;
+
+      const sortOrder = document.getElementById('sortOrder').value;
+      let allList = [...globalJsonData];
+      allList.sort((a, b) => {
+        if (sortOrder === 'unmatchedFirst') {
+          if (a.__isMatched !== b.__isMatched) return a.__isMatched ? 1 : -1;
+        } else if (sortOrder === 'matchedFirst') {
+          if (a.__isMatched !== b.__isMatched) return a.__isMatched ? -1 : 1;
+        }
+        return a.__origIndex - b.__origIndex;
+      });
+
+      const exportList = cleanDataForExport(allList);
+      const newWorksheet = XLSX.utils.json_to_sheet(exportList, { header: originalHeaders });
+      
+      const newWb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(newWb, newWorksheet, "Sheet1");
+
+      const outName = `Agile_ProjectOwner_All_${getDateString()}.xlsx`;
+      XLSX.writeFile(newWb, outName);
+    }
+
+    function downloadFilteredExcel() {
+      if (!globalWorkbook || !globalJsonData || globalJsonData.length === 0) return;
+
+      const filteredList = getProcessedData();
+      if (filteredList.length === 0) {
+        alert("目前篩選結果為空，無法下載！");
+        return;
+      }
+
+      const statusFilter = document.getElementById('statusFilter').value;
+      const searchQuery = (document.getElementById('tableSearch').value || "").trim();
+      
+      let filterTags = [];
+      if (statusFilter === 'unmatched') {
+        filterTags.push('未匹配');
+      } else if (statusFilter === 'matched') {
+        filterTags.push('已匹配');
+      }
+
+      if (searchQuery) {
+        const cleanSearch = searchQuery.replace(/[\\/:*?"<>|]/g, '');
+        if (cleanSearch) filterTags.push(cleanSearch);
+      }
+
+      const tagString = filterTags.length > 0 ? filterTags.join('_') : '篩選結果';
+      const outName = `Agile_${tagString}_${getDateString()}.xlsx`;
+
+      const exportList = cleanDataForExport(filteredList);
+      const newWorksheet = XLSX.utils.json_to_sheet(exportList, { header: originalHeaders });
+      
+      const newWb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(newWb, newWorksheet, "FilteredResult");
+
+      XLSX.writeFile(newWb, outName);
+    }
+
+    function toggleReferenceModal() {
+      const modal = document.getElementById('refModal');
+      modal.classList.toggle('hidden');
+      if (!modal.classList.contains('hidden')) {
+        renderRefTable();
+      }
+    }
+
+    function renderRefTable() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const normQuery = normalizeStr(query);
+      const tbody = document.getElementById('refTableBody');
+      tbody.innerHTML = "";
+
+      const filtered = referenceData.filter(r => 
+        r.nameCn.includes(query) || 
+        r.nameEn.toLowerCase().includes(query) || 
+        r.project.toLowerCase().includes(query) ||
+        r.vendor.toLowerCase().includes(query) ||
+        (normQuery && normalizeStr(r.project).includes(normQuery))
+      );
+
+      filtered.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50";
+        tr.innerHTML = `
+          <td class="p-2 font-medium">${r.nameCn}</td>
+          <td class="p-2 text-slate-600">${r.nameEn}</td>
+          <td class="p-2 text-slate-500">${r.vendor}</td>
+          <td class="p-2 font-mono text-indigo-600">${r.project}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>
