@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每週資料比對 & RD Datasheet 通知整合工具</title>
+<!-- SheetJS 解析 Excel -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px; background: #f5f7fb; color: #1f2937;
+    font-family: "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+  }
+  .container { max-width: 1400px; margin: auto; }
+  
+  .page-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    flex-wrap: wrap; gap: 15px; margin-bottom: 20px;
+  }
+  h1 { margin: 0 0 6px; font-size: 26px; color: #1e293b; }
+  .desc { color: #64748b; margin: 0; font-size: 14px; }
+  
+  .card {
+    background: white; border: 1px solid #e2e8f0; border-radius: 12px;
+    padding: 22px; margin-bottom: 20px; box-shadow: 0 2px 6px rgba(0,0,0,.03);
+  }
+  h2 {
+    margin-top: 0; font-size: 18px; color: #0f172a; border-bottom: 2px solid #3b82f6;
+    padding-bottom: 8px; margin-bottom: 16px;
+  }
+  .upload-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+  .upload-box {
+    border: 2px dashed #cbd5e1; border-radius: 10px; padding: 18px;
+    background: #f8fafc;
+  }
+  .upload-box h3 { margin: 0 0 10px; font-size: 15px; color: #334155; }
+  input[type=file] { width: 100%; }
+  .file-name { margin-top: 8px; color: #64748b; font-size: 13px; }
+  
+  button, .btn {
+    border: 0; border-radius: 6px; padding: 9px 16px; cursor: pointer;
+    font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;
+    text-decoration: none; transition: all 0.2s;
+  }
+  .primary { background: #2563eb; color: white; }
+  .primary:hover { background: #1d4ed8; }
+  .secondary { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+  .secondary:hover { background: #e2e8f0; }
+  .success { background: #10b981; color: white; }
+  .success:hover { background: #059669; }
+  .pending-btn { background: #0284c7; color: white; }
+  .pending-btn:hover { background: #0369a1; }
+  .webmail { background: #0284c7; color: white; }
+  .webmail:hover { background: #0369a1; }
+  .warning { background: #f59e0b; color: white; }
+  .warning:hover { background: #d97706; }
+  
+  .action-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .status { margin-left: 5px; font-weight: 600; color: #2563eb; font-size: 14px; }
+  
+  .stats {
+    display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-top:16px;
+  }
+  .stat { padding:14px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; }
+  .stat .num { font-size:22px; font-weight:700; margin-top:4px; }
+  
+  .filters {
+    display:grid; grid-template-columns: 200px 1fr 200px auto; gap:12px; align-items:end;
+  }
+  label { font-size: 13px; font-weight: 600; color:#475467; display:block; margin-bottom:5px; }
+  select, input[type=text] {
+    width:100%; padding:8px 12px; border:1px solid #cbd5e1; border-radius:6px;
+    background:white; font-size:14px;
+  }
+  .result-head { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:12px; }
+  .table-wrap { overflow:auto; max-height: 450px; border:1px solid #e2e8f0; border-radius:8px; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { border-bottom:1px solid #e2e8f0; padding:8px 10px; text-align:left; vertical-align: top; }
+  th { position:sticky; top:0; background:#f8fafc; z-index:1; border-top:none; }
+  tr:hover td { background:#f9fafb; }
+  
+  .badge { display:inline-block; padding:3px 8px; border-radius:999px; font-weight:600; font-size:12px; }
+  .badge-solved { background:#dcfce7; color:#15803d; }
+  .badge-open { background:#ffedd5; color:#c2410c; }
+  .badge-new { background:#dbeafe; color:#1e40af; }
+  .badge-unmatched { background:#fee2e2; color:#b91c1c; }
+  .badge-matched { background:#dcfce7; color:#15803d; }
+  
+  .empty { padding:24px; text-align:center; color:#94a3b8; }
+  .small { color:#64748b; font-size:13px; }
+  
+  .pn-container {
+    max-height: 100px; overflow-y: auto; border: 1px solid #e2e8f0;
+    background: #f8fafc; padding: 4px 8px; border-radius: 4px;
+  }
+  .pn-list { margin: 0; padding-left: 16px; font-family: monospace; font-size: 12px; }
+  
+  textarea {
+    width: 100%; height: 160px; margin-top: 10px; padding: 10px;
+    border: 1px solid #cbd5e1; border-radius: 6px; font-family: inherit; font-size: 14px;
+  }
+  .info-group { margin-bottom: 8px; font-size: 14px; }
+  .info-label { font-weight: 600; color: #475467; }
+
+  .send-options {
+    margin-top: 16px; padding: 14px; background: #f8fafc;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+  }
+  .send-options h4 { margin: 0 0 10px; font-size: 14px; color: #1e293b; }
+
+  /* Modal 樣式 */
+  .modal-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(15, 23, 42, 0.5); display: none; align-items: center;
+    justify-content: center; z-index: 9999; backdrop-filter: blur(2px);
+  }
+  .modal-box {
+    background: white; width: 100%; max-width: 440px; border-radius: 12px;
+    padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative;
+    animation: fadeIn 0.15s ease-out;
+  }
+  .modal-title { margin: 0 0 10px; font-size: 18px; color: #0f172a; font-weight: 700; }
+  .modal-desc { color: #475467; font-size: 14px; line-height: 1.6; margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .modal-close-icon {
+    position: absolute; top: 16px; right: 16px; background: none; border: none;
+    font-size: 18px; cursor: pointer; color: #94a3b8; padding: 4px;
+  }
+  .modal-close-icon:hover { color: #334155; }
+
+  .member-item { margin-bottom: 4px; }
+  .member-item:last-child { margin-bottom: 0; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 900px) {
+    .upload-grid, .stats, .filters { grid-template-columns:1fr; }
+    body { padding:14px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="page-header">
+    <div>
+      <h1>每週資料比對 & RD 追蹤儀表板</h1>
+      <div class="desc">上傳兩週 Excel 比對料號狀態，並透過 RD 對照清單自動產出待催收信件。</div>
+    </div>
+    <button class="secondary" onclick="openRdModal()">📖 查看 RD 對照資料庫</button>
+  </div>
+
+  <!-- 1. 上傳與比對 -->
+  <div class="card">
+    <h2>1. 上傳檔案與比對設定</h2>
+    <div class="upload-grid">
+      <div class="upload-box">
+        <h3>① 上週檔案</h3>
+        <input id="lastFile" type="file" accept=".xlsx,.xls,.csv">
+        <div id="lastName" class="file-name">尚未選擇檔案</div>
+      </div>
+      <div class="upload-box">
+        <h3>② 這週檔案</h3>
+        <input id="thisFile" type="file" accept=".xlsx,.xls,.csv">
+        <div id="thisName" class="file-name">尚未選擇檔案</div>
+      </div>
+      <div class="upload-box" style="border-color: #3b82f6; background: #eff6ff;">
+        <h3 style="color: #1d4ed8;">③ RD 對照表 (選填)</h3>
+        <input id="rdMappingFile" type="file" accept=".xlsx,.xls,.csv">
+        <div id="rdMappingName" class="file-name">使用系統預設對照庫</div>
+      </div>
+    </div>
+    <div class="action-row" style="margin-top:16px">
+      <button class="primary" id="compareBtn">開始比對並更新 Dashboard</button>
+      <span id="status" class="status"></span>
+    </div>
+    <div id="stats" class="stats" style="display:none">
+      <div class="stat"><div>上週已解決</div><div class="num" style="color:#15803d" id="solvedCount">0</div></div>
+      <div class="stat"><div>上週仍存在</div><div class="num" style="color:#c2410c" id="openCount">0</div></div>
+      <div class="stat"><div>本週新增</div><div class="num" style="color:#1e40af" id="newCount">0</div></div>
+    </div>
+  </div>
+
+  <!-- 2. RD 儀表板與發信用 -->
+  <div class="card" id="dashboardCard" style="display:none">
+    <div class="result-head">
+      <div>
+        <h2 style="margin:0 0 4px; border:none; padding:0;">2. 待追蹤專案與 RD Mapping Dashboard</h2>
+        <div class="small">自動將尚未結案（本週新增 + 上週仍存在）的項目 mapping 至負責 RD</div>
+      </div>
+    </div>
+    
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 18%;">Excel Model Name</th>
+            <th style="width: 18%;">比對到專案</th>
+            <th style="width: 14%;">RD 姓名</th>
+            <th style="width: 20%;">RD Email</th>
+            <th style="width: 20%;">待處理 HH P/N (筆數)</th>
+            <th style="width: 10%;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="dashboardBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 3. 信件預覽與發送 -->
+  <div class="card" id="emailCard" style="display:none">
+    <h2>3. 信件內容預覽與發送</h2>
+    <div class="info-group">
+      <span class="info-label">收件人 (To)：</span>
+      <span id="mailTo"></span>
+    </div>
+    <div class="info-group">
+      <span class="info-label">信件主旨 (Subject)：</span>
+      <span id="mailSubject"></span>
+    </div>
+    <textarea id="mailBody"></textarea>
+    
+    <div class="send-options">
+      <h4>👉 請選擇發送 / 處理方式：</h4>
+      <div class="action-row">
+        <button class="webmail" onclick="sendViaWebOutlook()">🌐 開啟 Outlook 網頁版 (Office 365)</button>
+        <button class="success" onclick="copyEmailContent()">📋 一鍵複製內容 (貼入舊版 Outlook)</button>
+        <button class="warning" onclick="downloadEml()">💾 下載 .eml 草稿檔 (可關聯舊 Outlook)</button>
+        <button class="secondary" onclick="sendViaMailto()">⚙️ 系統預設客戶端 (mailto)</button>
+      </div>
+      <div id="copyNotice" class="small" style="color: #15803d; margin-top: 8px; display: none; font-weight: bold;">
+        ✅ 已成功複製「收件人、主旨、內文」！請切換到舊版 Outlook 直接貼上。
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. 比對明細表 -->
+  <div class="card" id="searchCard" style="display:none">
+    <div class="result-head">
+      <div>
+        <h2 style="margin:0 0 4px; border:none; padding:0;">4. 比對原始明細表</h2>
+        <div class="small" id="resultInfo">尚未搜尋</div>
+      </div>
+      <div class="action-row">
+        <button class="pending-btn" id="downloadPendingBtn">📥 下載未結案資料 (扣除已解決)</button>
+        <button class="success" id="downloadAllBtn">下載全部比對資料 (.xlsx)</button>
+        <button class="secondary" id="downloadFilteredBtn">下載搜尋結果 (.xlsx)</button>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div>
+        <label for="ownerSelect">Owner</label>
+        <select id="ownerSelect"><option value="">全部 Owner</option></select>
+      </div>
+      <div>
+        <label for="hhSearch">HH P/N</label>
+        <input id="hhSearch" type="text" placeholder="輸入部分關鍵字">
+      </div>
+      <div>
+        <label for="typeSelect">資料類型</label>
+        <select id="typeSelect">
+          <option value="">全部類型</option>
+          <option value="上週已解決">上週已解決</option>
+          <option value="上週仍存在">上週仍存在</option>
+          <option value="本週新增">本週新增</option>
+        </select>
+      </div>
+      <div>
+        <button class="secondary" id="clearBtn">清除篩選</button>
+      </div>
+    </div>
+
+    <div style="margin-top:14px" class="table-wrap" id="tableWrap"></div>
+  </div>
+</div>
+
+<!-- Modal 1: 下載選項彈窗 -->
+<div class="modal-overlay" id="downloadModal">
+  <div class="modal-box">
+    <button class="modal-close-icon" onclick="closeModal()">✕</button>
+    <div class="modal-title">下載未結案資料</div>
+    <div class="modal-desc">
+      請選擇匯出 Excel 時，是否保留系統標註的「<strong>資料類型</strong>」欄位（本週新增 / 上週仍存在）？
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="executePendingDownload(false)">不要保留</button>
+      <button class="primary" onclick="executePendingDownload(true)">確定保留</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 2: RD 資料庫唯讀查看彈窗 -->
+<div class="modal-overlay" id="rdModal">
+  <div class="modal-box" style="max-width: 720px;">
+    <button class="modal-close-icon" onclick="closeRdModal()">✕</button>
+    <div class="modal-title">RD / Project 對照資料庫</div>
+    <div class="modal-desc" style="margin-bottom: 12px;">
+      此處為目前系統使用的專案對照清單。若需擴充或更新，請於主畫面「③ RD 對照表」直接上傳團隊維護的 Excel 檔。
+    </div>
+
+    <div style="display:flex; gap:10px; margin-bottom: 12px;">
+      <input type="text" id="rdSearchInput" placeholder="搜尋專案名稱、RD 姓名或 Email..." oninput="filterRdTable()">
+      <button class="secondary" style="white-space:nowrap;" onclick="downloadRdTemplate()">📥 下載 RD 對照表範本</button>
+    </div>
+
+    <div class="table-wrap" style="max-height: 360px;">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 30%;">Project (Model)</th>
+            <th style="width: 25%;">RD 姓名</th>
+            <th style="width: 45%;">RD Email</th>
+          </tr>
+        </thead>
+        <tbody id="rdDbModalBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// 預設 RD 資料庫 (支援單一物件或陣列)
+const defaultRdDatabase = {
+  "C4143": [
+    { role: "EE", name: "Vance Yang 楊竣翔", email: "vance.ch.yang@fii-foxconn.com" },
+    { role: "SE", name: "Nick Liao 廖家二", email: "nick.ce.liao@fii-foxconn.com" }
+  ],
+  "Katmai_CarlsbadRetreadTahitiApolloAurora": [],
+  "VR NVL144(PCBA)": [
+    { role: "EE", name: "Benson 许昌谚", email: "benson.cy.hsu@fii-foxconn.com" },
+    { role: "SE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" }
+  ],
+  "VRU (PCBA)": [
+    { role: "EE", name: "Derek Wu 吳愷威", email: "derek.kw.wu@fii-foxconn.com" },
+    { role: "SE", name: "Chris Huang 黃靖程", email: "chris.jc.huang@fii-foxconn.com" }
+  ],
+  "B300 AC": [
+    { role: "EE", name: "Jeff 童元甫", email: "jeff.yf.tong@fii-foxconn.com" },
+    { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" },
+    { role: "SE", name: "Cynthia 葉孟儒", email: "cynthia.mj.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Ying Liu 劉瑩", email: "liuying.y.liu@fii-foxconn.com" }
+  ],
+  "E6_IS": [
+    { role: "EE", name: "Ken 張世徽", email: "shih-hui.chang@fii-foxconn.com" },
+    { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" },
+    { role: "SE", name: "Cynthia 葉孟儒", email: "cynthia.mj.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Ying Liu 劉瑩", email: "liuying.y.liu@fii-foxconn.com" }
+  ],
+  "G6-8HD": [
+    { role: "EE", name: "Ken 張世徽", email: "shih-hui.chang@fii-foxconn.com" },
+    { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" },
+    { role: "SE", name: "Cynthia 葉孟儒", email: "cynthia.mj.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Ying Liu 劉瑩", email: "liuying.y.liu@fii-foxconn.com" }
+  ],
+  "POD32 POD128": [
+    { role: "EE", name: "Tim 林庭佑", email: "tim.ty.lin@fii-foxconn.com" },
+    { role: "EE", name: "Allen 鄭傑倫", email: "allen.cl.cheng@fii-foxconn.com" },
+    { role: "EE", name: "徐維成", email: "wei-cheng.xu@fii-foxconn.com" },
+    { role: "SE", name: "Nathan 周裕哲", email: "nathan.yc.chou@fii-foxconn.com" },
+    { role: "SE", name: "Tim 林福川", email: "tim.fc.lin@fii-foxconn.com" }
+  ],
+  "PBR BOM support": [],
+  "Dagny(MCV3)": [],
+  "Hanuman81/82": [],
+  "Mimino": [],
+  "PDB MAX": [],
+  "Hopper88": [],
+  "Monza 76/88": [],
+  "MONZA88": [],
+  "UPDB-3P6K(RESPIN)": [],
+  "Graviton 6 / LYNX": [],
+  "Dagny(MCV2)": [],
+  "VR NVL144(All System)": [
+    { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
+  ],
+  "Kyber Ultra(All System)": [],
+  "Language Processing Unit (LPU)": [
+    { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
+  ],
+  "GOOGLE_VR200": [],
+  "ORACLE VR200": [],
+  "VR200": [
+    { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
+  ],
+  "Yoxi_EIA_LC": [],
+  "Newell": [],
+  "Irene": [],
+  "Wall-E": [],
+  "Gloria Edge": [],
+  "Ambrose63(Fairooz)": [],
+  "Sedona": [],
+  "Cub Scout": [],
+  "Tiger(Graviton 5)": [
+    { role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" },
+    { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" },
+    { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }
+  ],
+  "Tiger49/56": [
+    { role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" },
+    { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" },
+    { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }
+  ],
+  "Katana": [],
+  "Katana_Redesign": [],
+  "Durango": [],
+  "Cascade_new": [],
+  "Tahiti respin-Black Pearl (Gizo)": [],
+  "Apollo Redesign": [],
+  "Alder": [],
+  "Alder SAS Dongle Respin": [],
+  "Turing": [],
+  "HGX4": [],
+  "G3-8C": [],
+  "G4-8C": [],
+  "G4-8C- MI300X(AMD SKU)": [],
+  "Oracle Oberon GB200": [],
+  "G5-8C": [],
+  "Mink": [],
+  "Moonlight": [],
+  "Stoat": [],
+  "Fisher": [],
+  "Antero": [],
+  "PERLIS": [],
+  "G5-8HD B200 LC": [],
+  "NR1S": [],
+  "Spotted cow": [],
+  "Spectrum 6": [],
+  "Quicksliver": [
+    { role: "EE", name: "Joe Tsai 蔡朝揚", email: "joe.cy.tsai@fii-foxconn.com" },
+    { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }
+  ],
+  "C219B": [
+    { role: "EE", name: "Andy Wang 王靖緯", email: "andy.cw.wang@fii-foxconn.com" },
+    { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }
+  ],
+  "C4A15(GB300)": [
+    { role: "EE", name: "You Ning Xu 許佑寧", email: "you-ning.xu@fii-foxconn.com" },
+    { role: "SE", name: "Emily Ma 馬千琇", email: "emily.ch.ma@fii-foxconn.com" }
+  ],
+  "VR NVL144(C9A16)": [
+    { role: "EE", name: "Barton Yeh 葉于睿", email: "barton.yj.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Tako Chen 陳博聖", email: "tako.ps.chen@fii-foxconn.com" }
+  ],
+  "C2080": [],
+  "C2195": [],
+  "DC-SCM(M1110)": [],
+  "C4A14 Samoa": [
+    { role: "EE", name: "Jeff Lin 林明杰", email: "jeff.mj.lin@fii-foxconn.com" },
+    { role: "SE", name: "Tako Chen 陳博聖", email: "tako.ps.chen@fii-foxconn.com" }
+  ],
+  "SpaceX": [],
+  "AI": [
+    { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
+    { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
+  ],
+  "Makalu 56 PCBA sub-set": [
+    { role: "EE", name: "Vicky Yu 于江濤", email: "vicky.jt.yu@fii-foxconn.com" },
+    { role: "SE", name: "Yingly Li 李瑩", email: "yingly.y.li@fii-foxconn.com" }
+  ],
+  "Astoria(TSMC)": [
+    { role: "EE", name: "Jeff Tong 童元甫", email: "jeff.yf.tong@fii-foxconn.com" },
+    { role: "SE", name: "Luke Wu 巫志祥", email: "luke.ch.wu@fii-foxconn.com" }
+  ],
+  "Beaverton": [
+    { role: "EE", name: "Jeff Tong 童元甫", email: "jeff.yf.tong@fii-foxconn.com" },
+    { role: "SE", name: "Luke Wu 巫志祥", email: "luke.ch.wu@fii-foxconn.com" }
+  ],
+  "C4144": [
+    { role: "EE", name: "Joe Tsai 蔡朝揚", email: "joe.cy.tsai@fii-foxconn.com" },
+    { role: "EE", name: "Eden Huang 黃宏裕", email: "eden.hy.huang@fii-foxconn.com" },
+    { role: "EE", name: "Alan Lee 李孟倫", email: "alan.ml.lee@fii-foxconn.com" },
+    { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" },
+    { role: "SE", name: "Vita Kuo 郭人慈", email: "vita.rc.kuo@fii-foxconn.com" },
+    { role: "SE", name: "Emily Ma 馬千琇", email: "emily.ch.ma@fii-foxconn.com" }
+  ],
+  "GB300": [
+    { role: "EE", name: "Knoll Kong 孔令恩", email: "knoll.le.kong@fii-foxconn.com" },
+    { role: "SE", name: "林圆融Amber Yj Lin", email: "amber.yj.lin@fii-foxconn.com" }
+  ],
+  "VR Rubin": [
+    { role: "EE", name: "Johnson Hsueh 薛丞恩", email: "johnson.ce.hsueh@fii-foxconn.com" },
+    { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" },
+    { role: "SE", name: "Megan Liou 劉立徽", email: "li-hui.liou@fii-foxconn.com" },
+    { role: "SE", name: "Mina Lin 林怡妤", email: "mina.yy.lin@fii-foxconn.com" }
+  ],
+  "C2184 GP RISER": [
+    { role: "EE", name: "Andy Wang 王靖緯", email: "andy.cw.wang@fii-foxconn.com" },
+    { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }
+  ],
+  "VR300": [],
+  "NVL8": [],
+  "Yoxi(MGX 4U)": [],
+  "Bahubali01-41/49(Hooter)": [],
+  "Bahubali09": [],
+  "Bahubali01~08": [],
+  "K2V5-DVD": [],
+  "Fraser(Ambrose66)": [],
+  "Hanuman86": [],
+  "Makalu": [],
+  "Makalu 49/56": [],
+  "Bahubali56/59": [],
+  "Monza83/84": [],
+  "Sunflare": [],
+  "UPDB-3P6K": [],
+  "Ti PSU(ORV3PSU & ORV3Shelf)": [],
+  "Astor": [],
+  "NN2": [],
+  "Arapaho": [],
+  "Sandhawk": [],
+  "Saber(Lenovo)": [],
+  "Vino 2U/4U": [],
+  "Bowie/Dagger": [],
+  "Dagger2": [],
+  "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) VR200 Earth": [],
+  "M5 MAC": [
+    { role: "EE", name: "Helen Wang 王思涵", email: "helen.sh.wang@fii-foxconn.com" },
+    { role: "SE", name: "Up-J Lin 林上傑", email: "upj.sg.lin@fii-foxconn.com" }
+  ],
+  "Tiger42": [
+    { role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" },
+    { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" },
+    { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }
+  ],
+  "Hopper78": [
+    { role: "EE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" }
+  ],
+  "5G_DU_Card": [
+    { role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" },
+    { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }
+  ],
+  "DUO": [],
+  "Rover16C/RoverC16C": [
+    { role: "SE", name: "辛卓昊 Derica Xin", email: "derica.zh.xin@fii-foxconn.com" }
+  ],
+  "Hanuman 01~06(Only L10&L12)": [
+    { role: "SE", name: "Lucy CY Lu (盧佳吟)", email: "lucy.cy.lu@fii-foxconn.com" }
+  ],
+  "Hanuman 11(Only L10&L12)": [
+    { role: "SE", name: "林圆融Amber Yj Lin", email: "amber.yj.lin@fii-foxconn.com" }
+  ],
+  "Hanuman Rising Power(Only L10&L12)": [
+    { role: "SE", name: "林圆融Amber Yj Lin", email: "amber.yj.lin@fii-foxconn.com" }
+  ],
+  "ISP": [
+    { role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" },
+    { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }
+  ],
+  "Gen 1": [],
+  "NuPOD": [],
+  "AI100U": [
+    { role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" },
+    { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }
+  ],
+  "Harrier": [
+    { role: "SE", name: "辛卓昊 Derica Xin", email: "derica.zh.xin@fii-foxconn.com" }
+  ],
+  "Husky": [
+    { role: "EE", name: "Cindy Wang 王雨薇", email: "cindy.yw.wang@fii-foxconn.com" },
+    { role: "SE", name: "Up-J Lin 林上傑", email: "upj.sg.lin@fii-foxconn.com" }
+  ],
+  "HPR (High Power Rack)": [
+    { role: "SE", name: "Jessy Cf Chang", email: "jessy.cf.chang@fii-foxconn.com" }
+  ],
+  "HPRV3 Anacapa(12KW)": [
+    { role: "SE", name: "Weber Chen 陳韋豪", email: "weber.wh.chen@fii-foxconn.com" }
+  ],
+  "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) HPRv3 Mars": [
+    { role: "SE", name: "Weber Chen 陳韋豪", email: "weber.wh.chen@fii-foxconn.com" }
+  ],
+  "Hanuman PCBA": [
+    { role: "EE", name: "Eiden Han 韓毅", email: "eiden.y.han@fii-foxconn.com" },
+    { role: "SE", name: "Eiden Han 韓毅", email: "eiden.y.han@fii-foxconn.com" }
+  ],
+  "Rubin Ultra": [],
+  "C2030": [],
+  "HGX R200 NVL8": [],
+  "Brunello": [],
+  "Baker": [],
+  "T11 Vera (YV5 Platform)": [],
+  "Bletchley": [],
+  "A2010 Respin": [],
+  "A2010/A2110/A2210": [],
+  "A2040": [],
+  "A2051": [],
+  "A2080 (Cerberus)": [],
+  "A2061(FC400(Fungible))": [],
+  "C2010 2U sensor": [],
+  "C2030 M2 riser": [],
+  "Customer：Clemente = Ingrasys：Mercury": [],
+  "C2190": [],
+  "C2141": [],
+  "NVL-GB200(All System)": [],
+  "NVL-GB300(All System)": [],
+  "NVL4-P4132": [],
+  "D2110(power adapter module)": [],
+  "C2154": [],
+  "A2010 Test card": [],
+  "A2040 Test card": [],
+  "D2112": [],
+  "AVA Card": [],
+  "Management 1G Switch": []
+};
+
+let rdDatabase = JSON.parse(JSON.stringify(defaultRdDatabase));
+let allResults = [];
+let headers = [];
+let parsedDashboardData = {};
+let currentMailData = { to: "", subject: "", body: "" };
+
+const $ = id => document.getElementById(id);
+
+// 輔助函式：確保取出的 RD 名單一定為 Array 格式
+function getRdList(keyOrObj) {
+  if (!keyOrObj) return [];
+  const val = typeof keyOrObj === 'string' ? rdDatabase[keyOrObj] : keyOrObj;
+  if (!val) return [];
+  return Array.isArray(val) ? val : [val];
+}
+
+// 渲染 RD Modal 清單（唯讀）
+function renderRdDbModal(filterText = "") {
+  const tbody = $("rdDbModalBody");
+  const keyword = filterText.toLowerCase().trim();
+  
+  const entries = Object.entries(rdDatabase).map(([key, val]) => {
+    return { key, list: getRdList(val) };
+  }).filter(({ key, list }) => {
+    if (!keyword) return true;
+    const matchKey = key.toLowerCase().includes(keyword);
+    const matchMember = list.some(m => 
+      (m.name && m.name.toLowerCase().includes(keyword)) || 
+      (m.email && m.email.toLowerCase().includes(keyword))
+    );
+    return matchKey || matchMember;
+  });
+
+  if (!entries.length) {
+    tbody.innerHTML = `<tr><td colspan="3" class="empty">找不到符合條件的 RD 資料</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = entries.map(({ key, list }) => `
+    <tr>
+      <td><b>${escapeHtml(key)}</b></td>
+      <td>${list.map(m => `<div class="member-item">${escapeHtml(m.name)}</div>`).join("")}</td>
+      <td>${list.map(m => `<div class="member-item">${escapeHtml(m.email)}</div>`).join("")}</td>
+    </tr>
+  `).join("");
+}
+
+function openRdModal() {
+  $("rdSearchInput").value = "";
+  renderRdDbModal();
+  $("rdModal").style.display = "flex";
+}
+
+function closeRdModal() {
+  $("rdModal").style.display = "none";
+}
+
+function filterRdTable() {
+  renderRdDbModal($("rdSearchInput").value);
+}
+
+// 下載 RD 對照表範本
+function downloadRdTemplate() {
+  const aoa = [
+    ["Model Name", "RD Name", "RD Email"],
+    ["C4143", "Jenny", "jenny.jz.zheng@ingrasys.com"],
+    ["C4143", "Amber Chen", "cesbg-epdii-pe-bom@ingrasys.com"],
+    ["C4143", "Dan", "dan.cf.kao@ingrasys.com"],
+    ["HGX_RUBIN_NVL", "Kerwin", "kerwin.dh.hsieh@ingrasys.com"]
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "RD對照表");
+  XLSX.writeFile(wb, "RD對照表_範本.xlsx");
+}
+
+$("lastFile").addEventListener("change", e => {
+  $("lastName").textContent = e.target.files[0] ? e.target.files[0].name : "尚未選擇檔案";
+});
+$("thisFile").addEventListener("change", e => {
+  $("thisName").textContent = e.target.files[0] ? e.target.files[0].name : "尚未選擇檔案";
+});
+$("rdMappingFile").addEventListener("change", e => {
+  $("rdMappingName").textContent = e.target.files[0] ? e.target.files[0].name : "使用系統預設對照庫";
+});
+
+function normalize(v) {
+  return String(v ?? "").trim();
+}
+
+// 移除 空白、底線、減號、正斜線、反斜線，讓 MONZA83_84 與 MONZA83/84 視為相同
+function cleanString(str) {
+  return String(str || '').toLowerCase().replace(/[\s_\-\/\\]/g, '');
+}
+
+function findHeader(headers, target) {
+  const exact = headers.find(h => normalize(h).toLowerCase() === target.toLowerCase());
+  if (exact) return exact;
+  return headers.find(h => normalize(h).replace(/\s/g, "").toLowerCase() === target.replace(/\s/g, "").toLowerCase());
+}
+
+function makeKey(row, hhHeader, ownerHeader) {
+  return normalize(row[hhHeader]) + "|||" + normalize(row[ownerHeader]).toLowerCase();
+}
+
+async function readExcel(file) {
+  const data = await file.arrayBuffer();
+  const wb = XLSX.read(data, { type: "array" });
+  if (!wb.SheetNames.length) throw new Error("找不到工作表。");
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+  if (!rows.length) throw new Error("檔案沒有資料。");
+  return rows;
+}
+
+function unique(arr) {
+  return [...new Set(arr)];
+}
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+}
+
+// 修正後的精準比對演算法：
+// 1. 完全相同優先比對
+// 2. 依照關鍵字長度由長到短排序比對，避免被短字串提前攔截
+function findMatchedProject(excelModelName) {
+  const cleanExcelName = cleanString(excelModelName);
+  if (!cleanExcelName) return null;
+
+  // 1. 優先精準完全符合
+  for (const key in rdDatabase) {
+    const cleanKey = cleanString(key);
+    if (cleanExcelName === cleanKey) {
+      return key;
+    }
+  }
+
+  // 2. 依照長度由長至短排序，避免短字串如 VR200 攔截了長字串 GOOGLE_VR200 / ORACLE VR200
+  const sortedKeys = Object.keys(rdDatabase).sort((a, b) => b.length - a.length);
+
+  for (const key of sortedKeys) {
+    const cleanKey = cleanString(key);
+    if (!cleanKey) continue;
+    if (cleanExcelName.includes(cleanKey) || cleanKey.includes(cleanExcelName)) {
+      return key;
+    }
+  }
+  return null;
+}
+
+$("compareBtn").addEventListener("click", async () => {
+  const lastFile = $("lastFile").files[0];
+  const thisFile = $("thisFile").files[0];
+  const rdFile = $("rdMappingFile").files[0];
+
+  if (!lastFile || !thisFile) {
+    alert("請同時上傳「上週檔案」與「這週檔案」！");
+    return;
+  }
+
+  $("compareBtn").disabled = true;
+  $("status").textContent = "比對與讀取中...";
+
+  try {
+    if (rdFile) {
+      const rdRows = await readExcel(rdFile);
+      const tempDb = {};
+      rdRows.forEach(r => {
+        const mKey = normalize(r["Model Name"] || r["Project"] || r["Model"]);
+        const rName = normalize(r["RD Name"] || r["RD 姓名"] || r["Name"]);
+        const rEmail = normalize(r["RD Email"] || r["Email"]);
+        if (mKey && rEmail) {
+          if (!tempDb[mKey]) tempDb[mKey] = [];
+          tempDb[mKey].push({ name: rName || "未命名", email: rEmail });
+        }
+      });
+      if (Object.keys(tempDb).length > 0) {
+        rdDatabase = tempDb;
+      }
+    }
+
+    const [lastRows, thisRows] = await Promise.all([
+      readExcel(lastFile),
+      readExcel(thisFile)
+    ]);
+
+    const lastHeaders = Object.keys(lastRows[0]);
+    const thisHeaders = Object.keys(thisRows[0]);
+    
+    const hhLast = findHeader(lastHeaders, "HH P/N");
+    const ownerLast = findHeader(lastHeaders, "Owner");
+    const hhThis = findHeader(thisHeaders, "HH P/N");
+    const ownerThis = findHeader(thisHeaders, "Owner");
+
+    if (!hhLast || !ownerLast || !hhThis || !ownerThis) {
+      throw new Error("兩份檔案皆必須具備「HH P/N」與「Owner」欄位！");
+    }
+
+    headers = unique([...lastHeaders, ...thisHeaders]);
+
+    const lastMap = new Map();
+    for (const row of lastRows) {
+      const key = makeKey(row, hhLast, ownerLast);
+      if (!normalize(row[hhLast]) && !normalize(row[ownerLast])) continue;
+      if (!lastMap.has(key)) lastMap.set(key, row);
+    }
+
+    const thisMap = new Map();
+    for (const row of thisRows) {
+      const key = makeKey(row, hhThis, ownerThis);
+      if (!normalize(row[hhThis]) && !normalize(row[ownerLast])) continue;
+      if (!thisMap.has(key)) thisMap.set(key, row);
+    }
+
+    allResults = [];
+
+    for (const [key, oldRow] of lastMap.entries()) {
+      const currentRow = thisMap.get(key);
+      const base = {};
+      for (const h of headers) base[h] = currentRow?.[h] ?? oldRow?.[h] ?? "";
+      base["資料類型"] = currentRow ? "上週仍存在" : "上週已解決";
+      allResults.push(base);
+    }
+
+    for (const [key, currentRow] of thisMap.entries()) {
+      if (!lastMap.has(key)) {
+        const base = {};
+        for (const h of headers) base[h] = currentRow?.[h] ?? "";
+        base["資料類型"] = "本週新增";
+        allResults.push(base);
+      }
+    }
+
+    const typeOrder = {"上週仍存在": 1, "本週新增": 2, "上週已解決": 3};
+    allResults.sort((a,b) =>
+      normalize(a["Owner"]).localeCompare(normalize(b["Owner"]), "zh-Hant") ||
+      (typeOrder[a["資料類型"]] || 9) - (typeOrder[b["資料類型"]] || 9) ||
+      normalize(a["HH P/N"]).localeCompare(normalize(b["HH P/N"]))
+    );
+
+    $("solvedCount").textContent = allResults.filter(r => r["資料類型"] === "上週已解決").length.toLocaleString();
+    $("openCount").textContent = allResults.filter(r => r["資料類型"] === "上週仍存在").length.toLocaleString();
+    $("newCount").textContent = allResults.filter(r => r["資料類型"] === "本週新增").length.toLocaleString();
+
+    const owners = unique(allResults.map(r => normalize(r["Owner"])).filter(Boolean))
+      .sort((a,b) => a.localeCompare(b, "zh-Hant"));
+    $("ownerSelect").innerHTML = '<option value="">全部 Owner</option>' +
+      owners.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
+
+    $("stats").style.display = "grid";
+    $("searchCard").style.display = "block";
+    renderTableList();
+
+    buildRdDashboard(allResults);
+
+    $("status").textContent = `比對成功，共 ${allResults.length.toLocaleString()} 筆資料`;
+  } catch (err) {
+    $("status").textContent = "";
+    alert("處理失敗：\n" + err.message);
+  } finally {
+    $("compareBtn").disabled = false;
+  }
+});
+
+function buildRdDashboard(rows) {
+  parsedDashboardData = {};
+
+  const modelHeader = findHeader(headers, "Model Name") || "Model Name";
+  const hhHeader = findHeader(headers, "HH P/N") || "HH P/N";
+
+  const pendingRows = rows.filter(r => r["資料類型"] === "本週新增" || r["資料類型"] === "上週仍存在");
+
+  pendingRows.forEach(row => {
+    const rawModel = normalize(row[modelHeader]);
+    const hhpn = normalize(row[hhHeader]);
+
+    if (!rawModel) return;
+
+    if (!parsedDashboardData[rawModel]) {
+      const matchedKey = findMatchedProject(rawModel);
+      if (matchedKey) {
+        const rdList = getRdList(matchedKey);
+        parsedDashboardData[rawModel] = {
+          matchedKey: matchedKey,
+          rdList: rdList,
+          hhpns: []
+        };
+      } else {
+        parsedDashboardData[rawModel] = {
+          matchedKey: null,
+          rdList: [],
+          hhpns: []
+        };
+      }
+    }
+
+    if (hhpn && !parsedDashboardData[rawModel].hhpns.includes(hhpn)) {
+      parsedDashboardData[rawModel].hhpns.push(hhpn);
+    }
+  });
+
+  const tbody = $("dashboardBody");
+  tbody.innerHTML = "";
+  const modelKeys = Object.keys(parsedDashboardData);
+
+  if (modelKeys.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="empty">未找到需要追蹤的 Model Name 或無未結案料號</td></tr>`;
+  } else {
+    modelKeys.forEach(model => {
+      const item = parsedDashboardData[model];
+      const tr = document.createElement("tr");
+
+      const hhpnListHtml = item.hhpns.length > 0
+        ? `<div class="pn-container"><ul class="pn-list">${item.hhpns.map(pn => `<li>${escapeHtml(pn)}</li>`).join('')}</ul></div>`
+        : '<span style="color:#94a3b8">(無待追蹤料號)</span>';
+
+      const rdNamesHtml = item.rdList.length > 0
+        ? item.rdList.map(r => `<div class="member-item">${escapeHtml(r.name || '未命名')}</div>`).join('')
+        : '<span style="color:#94a3b8">未指定</span>';
+
+      const rdEmailsHtml = item.rdList.length > 0
+        ? item.rdList.map(r => `<div class="member-item">${escapeHtml(r.email || '-')}</div>`).join('')
+        : '<span style="color:#94a3b8">-</span>';
+
+      const hasValidEmail = item.rdList.some(r => r.email);
+      const actionBtn = hasValidEmail
+        ? `<button class="btn primary" onclick="generateEmail('${escapeHtml(model)}')">產生信件</button>`
+        : `<span class="badge badge-unmatched">未對應 RD</span>`;
+
+      tr.innerHTML = `
+        <td><b>${escapeHtml(model)}</b></td>
+        <td>${item.matchedKey ? `<span class="badge badge-matched">${escapeHtml(item.matchedKey)}</span>` : '<span class="badge badge-unmatched">未找到對照</span>'}</td>
+        <td>${rdNamesHtml}</td>
+        <td>${rdEmailsHtml}</td>
+        <td>${hhpnListHtml} <div class="small" style="margin-top:2px;">共 ${item.hhpns.length} 筆</div></td>
+        <td>${actionBtn}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  $("dashboardCard").style.display = "block";
+}
+
+function generateEmail(rawModelKey) {
+  const info = parsedDashboardData[rawModelKey];
+  if (!info || !info.rdList || info.rdList.length === 0) {
+    alert("該專案未對照到 RD 資料，無法建立信件！");
+    return;
+  }
+
+  const validEmails = info.rdList.map(r => r.email).filter(Boolean);
+  if (validEmails.length === 0) {
+    alert("該專案未設定有效的 RD Email，無法建立信件！");
+    return;
+  }
+
+  const toRecipients = validEmails.join("; ");
+  const namesText = info.rdList.map(r => r.name || "RD").join(", ");
+  const hhpnText = info.hhpns.length > 0 ? info.hhpns.join('\n') : "(無料號清單)";
+  const projectName = info.matchedKey || rawModelKey;
+
+  const emailBody = `Hi ${namesText},
+
+${projectName} 的以下 PN 需要您上傳 datasheet ，再麻煩您協助上傳至 PDM：
+
+${hhpnText}
+
+Thank you!`;
+
+  currentMailData.to = toRecipients;
+  // 改為指定的主旨格式
+  currentMailData.subject = `[${projectName}] 請協助上傳 Datasheet`;
+  currentMailData.body = emailBody;
+
+  $("mailTo").textContent = currentMailData.to;
+  $("mailSubject").textContent = currentMailData.subject;
+  $("mailBody").value = currentMailData.body;
+  $("copyNotice").style.display = "none";
+
+  $("emailCard").style.display = "block";
+  $("emailCard").scrollIntoView({ behavior: 'smooth' });
+}
+
+function sendViaWebOutlook() {
+  if (!currentMailData.to) return alert("請先產生信件內容！");
+  const body = $("mailBody").value;
+  const webUrl = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(currentMailData.to)}&subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(body)}`;
+  window.open(webUrl, '_blank');
+}
+
+function copyEmailContent() {
+  if (!currentMailData.to) return alert("請先產生信件內容！");
+  const body = $("mailBody").value;
+  const fullText = `收件人：${currentMailData.to}\n主旨：${currentMailData.subject}\n\n${body}`;
+
+  navigator.clipboard.writeText(fullText).then(() => {
+    $("copyNotice").style.display = "block";
+    setTimeout(() => { $("copyNotice").style.display = "none"; }, 5000);
+  }).catch(() => {
+    const t = document.createElement("textarea");
+    t.value = fullText;
+    document.body.appendChild(t);
+    t.select();
+    document.execCommand("copy");
+    document.body.removeChild(t);
+    $("copyNotice").style.display = "block";
+  });
+}
+
+function downloadEml() {
+  if (!currentMailData.to) return alert("請先產生信件內容！");
+  const body = $("mailBody").value;
+  
+  const emlContent = 
+`To: ${currentMailData.to}
+Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(currentMailData.subject)))}?=
+X-Unsent: 1
+Content-Type: text/plain; charset=utf-8
+
+${body}`;
+
+  const blob = new Blob([emlContent], { type: 'message/rfc822' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${currentMailData.subject.replace(/[\\/:*?"<>|]/g, '_')}.eml`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function sendViaMailto() {
+  if (!currentMailData.to) return alert("沒有可發送的信件資料！");
+  const mailBodyVal = $("mailBody").value;
+  const mailtoUrl = `mailto:${encodeURIComponent(currentMailData.to)}?subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(mailBodyVal)}`;
+  window.location.href = mailtoUrl;
+}
+
+function renderTableList() {
+  const owner = $("ownerSelect").value.toLowerCase();
+  const hh = $("hhSearch").value.trim().toLowerCase();
+  const type = $("typeSelect").value;
+
+  const filtered = allResults.filter(r => {
+    const okOwner = !owner || normalize(r["Owner"]).toLowerCase() === owner;
+    const okHH = !hh || normalize(r["HH P/N"]).toLowerCase().includes(hh);
+    const okType = !type || r["資料類型"] === type;
+    return okOwner && okHH && okType;
+  });
+
+  $("resultInfo").textContent = `目前顯示 ${filtered.length.toLocaleString()} 筆 / 全部 ${allResults.length.toLocaleString()} 筆`;
+
+  if (!filtered.length) {
+    $("tableWrap").innerHTML = '<div class="empty">沒有符合條件的資料</div>';
+    return filtered;
+  }
+
+  const exportHeaders = ["資料類型", ...headers];
+  let html = "<table><thead><tr>";
+  for (const h of exportHeaders) html += `<th>${escapeHtml(h)}</th>`;
+  html += "</tr></thead><tbody>";
+
+  for (const r of filtered) {
+    html += "<tr>";
+    for (const h of exportHeaders) {
+      let val = r[h] ?? "";
+      if (h === "資料類型") {
+        const cls = val === "上週已解決" ? "badge-solved" : val === "上週仍存在" ? "badge-open" : "badge-new";
+        html += `<td><span class="badge ${cls}">${escapeHtml(val)}</span></td>`;
+      } else {
+        html += `<td>${escapeHtml(String(val))}</td>`;
+      }
+    }
+    html += "</tr>";
+  }
+  html += "</tbody></table>";
+  $("tableWrap").innerHTML = html;
+  return filtered;
+}
+
+["ownerSelect", "hhSearch", "typeSelect"].forEach(id => {
+  $(id).addEventListener("input", renderTableList);
+  $(id).addEventListener("change", renderTableList);
+});
+
+$("clearBtn").addEventListener("click", () => {
+  $("ownerSelect").value = "";
+  $("hhSearch").value = "";
+  $("typeSelect").value = "";
+  renderTableList();
+});
+
+function downloadRows(rows, filename, includeType = true) {
+  if (!rows.length) return alert("目前沒有可下載的資料。");
+  const exportHeaders = includeType ? ["資料類型", ...headers] : [...headers];
+  const aoa = [exportHeaders, ...rows.map(r => exportHeaders.map(h => r[h] ?? ""))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "比對結果");
+  XLSX.writeFile(wb, filename);
+}
+
+function openModal() {
+  $("downloadModal").style.display = "flex";
+}
+
+function closeModal() {
+  $("downloadModal").style.display = "none";
+}
+
+$("downloadPendingBtn").addEventListener("click", () => {
+  const pendingRows = allResults.filter(r => r["資料類型"] !== "上週已解決");
+  if (!pendingRows.length) return alert("目前沒有未結案的資料！");
+  openModal();
+});
+
+function executePendingDownload(includeType) {
+  closeModal();
+  const pendingRows = allResults.filter(r => r["資料類型"] !== "上週已解決");
+  const filename = includeType ? "Excel_未結案資料_含資料類型.xlsx" : "Excel_未結案資料_純原始欄位.xlsx";
+  downloadRows(pendingRows, filename, includeType);
+}
+
+$("downloadAllBtn").addEventListener("click", () => {
+  downloadRows(allResults, "Excel_每週比對_全部資料.xlsx", true);
+});
+
+$("downloadFilteredBtn").addEventListener("click", () => {
+  const filtered = renderTableList();
+  downloadRows(filtered, "Excel_每週比對_搜尋結果.xlsx", true);
+});
+</script>
+</body>
+</html>
