@@ -13,4 +13,9 @@ RD&weekly_compare_v1.1 initial release
 <h4>2026/10/01</h4>
 Find_Project_Owner_v1.1 add no Part family download
 <br>
-RD&weekly_compare_v1.2 2026/10/01 add cc function
+RD&weekly_compare_v1.2 add cc function
+---------------------------------
+<h4>2026/10/01</h4>
+Find_Project_Owner_v1.2 remove no Part family download
+<br>
+RD&weekly_compare_v1.3 add no Part family download
