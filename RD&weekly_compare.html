@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>每週資料比對 & RD Datasheet 通知整合工具</title>
-<!-- SheetJS 解析 Excel -->
+<title>每週資料比對 & RD 追蹤與待補 Part Family 整合工具</title>
+<!-- SheetJS 解析與匯出 Excel -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   * { box-sizing: border-box; }
@@ -41,7 +41,7 @@
   button, .btn {
     border: 0; border-radius: 6px; padding: 9px 16px; cursor: pointer;
     font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center;
-    text-decoration: none; transition: all 0.2s;
+    text-decoration: none; transition: all 0.2s; gap: 6px;
   }
   .primary { background: #2563eb; color: white; }
   .primary:hover { background: #1d4ed8; }
@@ -55,12 +55,14 @@
   .webmail:hover { background: #0369a1; }
   .warning { background: #f59e0b; color: white; }
   .warning:hover { background: #d97706; }
+  .amber-btn { background: #d97706; color: white; }
+  .amber-btn:hover { background: #b45309; }
   
   .action-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
   .status { margin-left: 5px; font-weight: 600; color: #2563eb; font-size: 14px; }
   
   .stats {
-    display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-top:16px;
+    display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; margin-top:16px;
   }
   .stat { padding:14px; border-radius:8px; background:#f8fafc; border:1px solid #e2e8f0; }
   .stat .num { font-size:22px; font-weight:700; margin-top:4px; }
@@ -109,6 +111,9 @@
   }
   .send-options h4 { margin: 0 0 10px; font-size: 14px; color: #1e293b; }
 
+  .border-amber { border-color: #f59e0b !important; }
+  .bg-amber-light { background: #fffbeb !important; }
+
   /* Modal 樣式 */
   .modal-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -147,8 +152,8 @@
 <div class="container">
   <div class="page-header">
     <div>
-      <h1>每週資料比對 & RD 追蹤儀表板</h1>
-      <div class="desc">上傳兩週 Excel 比對料號狀態，並透過 RD 對照清單自動產出待催收信件。</div>
+      <h1>每週資料比對 & RD 追蹤與 Part Family 整合儀表板</h1>
+      <div class="desc">比對兩週 Excel，自動篩選尚未結案之項目 mapping RD 發信，並對未結案缺漏 Part Family 之物料自動生成建議。</div>
     </div>
     <button class="secondary" onclick="openRdModal()">📖 查看 RD & CC 對照資料庫</button>
   </div>
@@ -163,7 +168,7 @@
         <div id="lastName" class="file-name">尚未選擇檔案</div>
       </div>
       <div class="upload-box">
-        <h3>② 這週檔案</h3>
+        <h3>② 這週檔案 (支援檔名日期識別)</h3>
         <input id="thisFile" type="file" accept=".xlsx,.xls,.csv">
         <div id="thisName" class="file-name">尚未選擇檔案</div>
       </div>
@@ -178,9 +183,13 @@
       <span id="status" class="status"></span>
     </div>
     <div id="stats" class="stats" style="display:none">
-      <div class="stat"><div>上週已解決</div><div class="num" style="color:#15803d" id="solvedCount">0</div></div>
-      <div class="stat"><div>上週仍存在</div><div class="num" style="color:#c2410c" id="openCount">0</div></div>
-      <div class="stat"><div>本週新增</div><div class="num" style="color:#1e40af" id="newCount">0</div></div>
+      <div class="stat"><div>上週已解決 (結案)</div><div class="num" style="color:#15803d" id="solvedCount">0</div></div>
+      <div class="stat"><div>上週仍存在 (未結案)</div><div class="num" style="color:#c2410c" id="openCount">0</div></div>
+      <div class="stat"><div>本週新增 (未結案)</div><div class="num" style="color:#1e40af" id="newCount">0</div></div>
+      <div class="stat" style="border-color: #fcd34d; background: #fffdf5;">
+        <div style="color: #b45309; font-weight:600;">未結案待補 Part Family</div>
+        <div class="num" style="color:#d97706" id="missingFamilyCount">0</div>
+      </div>
     </div>
   </div>
 
@@ -231,7 +240,7 @@
       <h4>👉 請選擇發送 / 處理方式：</h4>
       <div class="action-row">
         <button class="webmail" onclick="sendViaWebOutlook()">🌐 開啟 Outlook 網頁版 (Office 365)</button>
-        <button class="success" onclick="copyEmailContent()">📋 一鍵複製內容 (貼入舊版 Outlook)</button>
+        <button class="success" onclick="copyEmailContent()">📋 一鍵複製內容 (貼入 Outlook)</button>
         <button class="warning" onclick="downloadEml()">💾 下載 .eml 草稿檔 (直接帶入 CC)</button>
         <button class="secondary" onclick="sendViaMailto()">⚙️ 系統預設客戶端 (mailto)</button>
       </div>
@@ -241,11 +250,47 @@
     </div>
   </div>
 
-  <!-- 4. 比對明細表 -->
+  <!-- 4. 待補 Part Family 統整專區 (只針對未結案料號) -->
+  <div class="card border-amber" id="missingFamilyCard" style="display:none">
+    <div class="result-head">
+      <div>
+        <h2 style="margin:0 0 4px; border-bottom: 2px solid #f59e0b; padding-bottom:8px; color: #92400e;">
+          4. 待補 Part Family 統整專區 (未結案且無 Part Family 物料)
+        </h2>
+        <div class="small" id="missingFamilyDesc">自動將已結案物料排除，僅統整待建立之項目，並生成：供應商料號_供應商</div>
+      </div>
+      <button class="amber-btn" onclick="downloadMissingFamilyExcel()">
+        📥 下載待補 Part Family 清單 (.xlsx)
+      </button>
+    </div>
+
+    <div style="margin-bottom: 12px; display: flex; gap: 10px;">
+      <input type="text" id="missingFamilySearch" placeholder="快速搜尋待補物料 (Model, HH P/N, 供應商料號, 廠商, Owner)..." oninput="renderMissingFamilyTable()">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead class="bg-amber-light">
+          <tr>
+            <th>Model Name</th>
+            <th>HH P/N</th>
+            <th>供應商料號 (Mfr P/N)</th>
+            <th>供應商 (Manufacturer)</th>
+            <th>資料狀態</th>
+            <th>建議生成之 Part Family</th>
+            <th>負責 Owner</th>
+          </tr>
+        </thead>
+        <tbody id="missingFamilyBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 5. 比對原始明細表 -->
   <div class="card" id="searchCard" style="display:none">
     <div class="result-head">
       <div>
-        <h2 style="margin:0 0 4px; border:none; padding:0;">4. 比對原始明細表</h2>
+        <h2 style="margin:0 0 4px; border:none; padding:0;">5. 比對原始明細表</h2>
         <div class="small" id="resultInfo">尚未搜尋</div>
       </div>
       <div class="action-row">
@@ -282,7 +327,7 @@
   </div>
 </div>
 
-<!-- Modal 1: 下載選項彈窗 -->
+<!-- Modal 1: 下載未結案選項彈窗 -->
 <div class="modal-overlay" id="downloadModal">
   <div class="modal-box">
     <button class="modal-close-icon" onclick="closeModal()">✕</button>
@@ -297,13 +342,13 @@
   </div>
 </div>
 
-<!-- Modal 2: RD 與 CC 資料庫唯讀查看彈窗 -->
+<!-- Modal 2: RD 與 CC 資料庫查看彈窗 -->
 <div class="modal-overlay" id="rdModal">
   <div class="modal-box" style="max-width: 780px;">
     <button class="modal-close-icon" onclick="closeRdModal()">✕</button>
     <div class="modal-title">RD / Project 對照與 CC 名單資料庫</div>
     <div class="modal-desc" style="margin-bottom: 12px;">
-      此處為系統目前運作中的對照清單（唯讀）。若需擴充或更新 RD 名單，請下載範本並於主畫面「③ RD 對照表」直接上傳團隊維護的 Excel 檔。
+      此處為系統目前運作中的對照清單（唯讀）。若需擴充或更新 RD 名單，請下載範本並於主畫面「③ RD 對照表」直接上傳 Excel 檔。
     </div>
 
     <!-- 1. 固定 CC 名單展示 -->
@@ -349,7 +394,7 @@
 </div>
 
 <script>
-// 固定 CC 名單資料庫
+// 固定 CC 名單
 const fixedCcList = [
   { role: "CC", name: "Doing Wang 王斯弘", email: "doing.sy.wang@ingrasys.com" },
   { role: "CC", name: "Sam Taso 曹勝峰", email: "sam.sf.taso@ingrasys.com" },
@@ -397,40 +442,18 @@ const defaultRdDatabase = {
     { role: "SE", name: "Nathan 周裕哲", email: "nathan.yc.chou@fii-foxconn.com" },
     { role: "SE", name: "Tim 林福川", email: "tim.fc.lin@fii-foxconn.com" }
   ],
-  "PBR BOM support": [],
-  "Dagny(MCV3)": [],
-  "Hanuman81/82": [],
-  "Mimino": [],
-  "PDB MAX": [],
-  "Hopper88": [],
-  "Monza 76/88": [],
-  "MONZA88": [],
-  "UPDB-3P6K(RESPIN)": [],
-  "Graviton 6 / LYNX": [],
-  "Dagny(MCV2)": [],
   "VR NVL144(All System)": [
     { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
     { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
   ],
-  "Kyber Ultra(All System)": [],
   "Language Processing Unit (LPU)": [
     { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
     { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
   ],
-  "GOOGLE_VR200": [],
-  "ORACLE VR200": [],
   "VR200": [
     { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
     { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
   ],
-  "Yoxi_EIA_LC": [],
-  "Newell": [],
-  "Irene": [],
-  "Wall-E": [],
-  "Gloria Edge": [],
-  "Ambrose63(Fairooz)": [],
-  "Sedona": [],
-  "Cub Scout": [],
   "Tiger(Graviton 5)": [
     { role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" },
     { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" },
@@ -441,31 +464,6 @@ const defaultRdDatabase = {
     { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" },
     { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }
   ],
-  "Katana": [],
-  "Katana_Redesign": [],
-  "Durango": [],
-  "Cascade_new": [],
-  "Tahiti respin-Black Pearl (Gizo)": [],
-  "Apollo Redesign": [],
-  "Alder": [],
-  "Alder SAS Dongle Respin": [],
-  "Turing": [],
-  "HGX4": [],
-  "G3-8C": [],
-  "G4-8C": [],
-  "G4-8C- MI300X(AMD SKU)": [],
-  "Oracle Oberon GB200": [],
-  "G5-8C": [],
-  "Mink": [],
-  "Moonlight": [],
-  "Stoat": [],
-  "Fisher": [],
-  "Antero": [],
-  "PERLIS": [],
-  "G5-8HD B200 LC": [],
-  "NR1S": [],
-  "Spotted cow": [],
-  "Spectrum 6": [],
   "Quicksliver": [
     { role: "EE", name: "Joe Tsai 蔡朝揚", email: "joe.cy.tsai@fii-foxconn.com" },
     { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }
@@ -482,21 +480,9 @@ const defaultRdDatabase = {
     { role: "EE", name: "Barton Yeh 葉于睿", email: "barton.yj.yeh@fii-foxconn.com" },
     { role: "SE", name: "Tako Chen 陳博聖", email: "tako.ps.chen@fii-foxconn.com" }
   ],
-  "C2080": [],
-  "C2195": [],
-  "DC-SCM(M1110)": [],
   "C4A14 Samoa": [
     { role: "EE", name: "Jeff Lin 林明杰", email: "jeff.mj.lin@fii-foxconn.com" },
     { role: "SE", name: "Tako Chen 陳博聖", email: "tako.ps.chen@fii-foxconn.com" }
-  ],
-  "SpaceX": [],
-  "AI": [
-    { role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" },
-    { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }
-  ],
-  "Makalu 56 PCBA sub-set": [
-    { role: "EE", name: "Vicky Yu 于江濤", email: "vicky.jt.yu@fii-foxconn.com" },
-    { role: "SE", name: "Yingly Li 李瑩", email: "yingly.y.li@fii-foxconn.com" }
   ],
   "Astoria(TSMC)": [
     { role: "EE", name: "Jeff Tong 童元甫", email: "jeff.yf.tong@fii-foxconn.com" },
@@ -528,31 +514,10 @@ const defaultRdDatabase = {
     { role: "EE", name: "Andy Wang 王靖緯", email: "andy.cw.wang@fii-foxconn.com" },
     { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }
   ],
-  "VR300": [],
-  "NVL8": [],
-  "Yoxi(MGX 4U)": [],
-  "Bahubali01-41/49(Hooter)": [],
-  "Bahubali09": [],
-  "Bahubali01~08": [],
-  "K2V5-DVD": [],
-  "Fraser(Ambrose66)": [],
-  "Hanuman86": [],
-  "Makalu": [],
-  "Makalu 49/56": [],
-  "Bahubali56/59": [],
-  "Monza83/84": [],
-  "Sunflare": [],
-  "UPDB-3P6K": [],
-  "Ti PSU(ORV3PSU & ORV3Shelf)": [],
-  "Astor": [],
-  "NN2": [],
-  "Arapaho": [],
-  "Sandhawk": [],
-  "Saber(Lenovo)": [],
-  "Vino 2U/4U": [],
-  "Bowie/Dagger": [],
-  "Dagger2": [],
-  "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) VR200 Earth": [],
+  "Makalu 56 PCBA sub-set": [
+    { role: "EE", name: "Vicky Yu 于江濤", email: "vicky.jt.yu@fii-foxconn.com" },
+    { role: "SE", name: "Yingly Li 李瑩", email: "yingly.y.li@fii-foxconn.com" }
+  ],
   "M5 MAC": [
     { role: "EE", name: "Helen Wang 王思涵", email: "helen.sh.wang@fii-foxconn.com" },
     { role: "SE", name: "Up-J Lin 林上傑", email: "upj.sg.lin@fii-foxconn.com" }
@@ -562,14 +527,10 @@ const defaultRdDatabase = {
     { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" },
     { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }
   ],
-  "Hopper78": [
-    { role: "EE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" }
-  ],
   "5G_DU_Card": [
     { role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" },
     { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }
   ],
-  "DUO": [],
   "Rover16C/RoverC16C": [
     { role: "SE", name: "辛卓昊 Derica Xin", email: "derica.zh.xin@fii-foxconn.com" }
   ],
@@ -586,8 +547,6 @@ const defaultRdDatabase = {
     { role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" },
     { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }
   ],
-  "Gen 1": [],
-  "NuPOD": [],
   "AI100U": [
     { role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" },
     { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }
@@ -611,35 +570,7 @@ const defaultRdDatabase = {
   "Hanuman PCBA": [
     { role: "EE", name: "Eiden Han 韓毅", email: "eiden.y.han@fii-foxconn.com" },
     { role: "SE", name: "Eiden Han 韓毅", email: "eiden.y.han@fii-foxconn.com" }
-  ],
-  "Rubin Ultra": [],
-  "C2030": [],
-  "HGX R200 NVL8": [],
-  "Brunello": [],
-  "Baker": [],
-  "T11 Vera (YV5 Platform)": [],
-  "Bletchley": [],
-  "A2010 Respin": [],
-  "A2010/A2110/A2210": [],
-  "A2040": [],
-  "A2051": [],
-  "A2080 (Cerberus)": [],
-  "A2061(FC400(Fungible))": [],
-  "C2010 2U sensor": [],
-  "C2030 M2 riser": [],
-  "Customer：Clemente = Ingrasys：Mercury": [],
-  "C2190": [],
-  "C2141": [],
-  "NVL-GB200(All System)": [],
-  "NVL-GB300(All System)": [],
-  "NVL4-P4132": [],
-  "D2110(power adapter module)": [],
-  "C2154": [],
-  "A2010 Test card": [],
-  "A2040 Test card": [],
-  "D2112": [],
-  "AVA Card": [],
-  "Management 1G Switch": []
+  ]
 };
 
 let rdDatabase = JSON.parse(JSON.stringify(defaultRdDatabase));
@@ -650,6 +581,9 @@ let headers = [];
 let parsedDashboardData = {};
 let currentMailData = { to: "", cc: "", subject: "", body: "" };
 
+let extractedFileDate = "";
+let missingFamilyList = [];
+
 const $ = id => document.getElementById(id);
 
 function getRdList(keyOrObj) {
@@ -659,7 +593,24 @@ function getRdList(keyOrObj) {
   return Array.isArray(val) ? val : [val];
 }
 
-// 渲染 Modal 內容（唯讀）
+function extractDateFromFileName(filename) {
+  if (!filename) return "";
+  const match = filename.match(/(?:_|\b)(\d{4})[-_](\d{2})[-_](\d{2})(?:[-_]|\b)/);
+  if (match) {
+    return `${match[1]}${match[2]}${match[3]}`;
+  }
+  return "";
+}
+
+function getDateString() {
+  if (extractedFileDate) return extractedFileDate;
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
 function renderFixedCcTable() {
   const tbody = $("fixedCcBody");
   tbody.innerHTML = fixedCcList.map(item => `
@@ -718,13 +669,11 @@ function filterRdTable() {
   renderRdDbModal($("rdSearchInput").value);
 }
 
-// 下載標準範本（供團隊離線維護）
 function downloadRdTemplate() {
   const aoa = [
     ["Model Name", "Role", "RD Name", "RD Email"],
     ["C4143", "SE", "Nick Liao 廖家二", "nick.ce.liao@fii-foxconn.com"],
-    ["C4143", "EE", "Vance Yang 楊竣翔", "vance.ch.yang@fii-foxconn.com"],
-    ["HGX_RUBIN_NVL", "SE", "Kerwin", "kerwin.dh.hsieh@ingrasys.com"]
+    ["C4143", "EE", "Vance Yang 楊竣翔", "vance.ch.yang@fii-foxconn.com"]
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
@@ -736,7 +685,13 @@ $("lastFile").addEventListener("change", e => {
   $("lastName").textContent = e.target.files[0] ? e.target.files[0].name : "尚未選擇檔案";
 });
 $("thisFile").addEventListener("change", e => {
-  $("thisName").textContent = e.target.files[0] ? e.target.files[0].name : "尚未選擇檔案";
+  if (e.target.files[0]) {
+    $("thisName").textContent = e.target.files[0].name;
+    extractedFileDate = extractDateFromFileName(e.target.files[0].name);
+  } else {
+    $("thisName").textContent = "尚未選擇檔案";
+    extractedFileDate = "";
+  }
 });
 $("rdMappingFile").addEventListener("change", e => {
   $("rdMappingName").textContent = e.target.files[0] ? e.target.files[0].name : "使用系統預設對照庫";
@@ -838,14 +793,10 @@ $("compareBtn").addEventListener("click", async () => {
     const lastHeaders = Object.keys(lastRows[0]);
     const thisHeaders = Object.keys(thisRows[0]);
     
-    const hhLast = findHeader(lastHeaders, "HH P/N");
-    const ownerLast = findHeader(lastHeaders, "Owner");
-    const hhThis = findHeader(thisHeaders, "HH P/N");
-    const ownerThis = findHeader(thisHeaders, "Owner");
-
-    if (!hhLast || !ownerLast || !hhThis || !ownerThis) {
-      throw new Error("兩份檔案皆必須具備「HH P/N」與「Owner」欄位！");
-    }
+    const hhLast = findHeader(lastHeaders, "HH P/N") || findHeader(lastHeaders, "Product P/N") || "HH P/N";
+    const ownerLast = findHeader(lastHeaders, "Owner") || "Owner";
+    const hhThis = findHeader(thisHeaders, "HH P/N") || findHeader(thisHeaders, "Product P/N") || "HH P/N";
+    const ownerThis = findHeader(thisHeaders, "Owner") || "Owner";
 
     headers = unique([...lastHeaders, ...thisHeaders]);
 
@@ -886,12 +837,16 @@ $("compareBtn").addEventListener("click", async () => {
     allResults.sort((a,b) =>
       normalize(a["Owner"]).localeCompare(normalize(b["Owner"]), "zh-Hant") ||
       (typeOrder[a["資料類型"]] || 9) - (typeOrder[b["資料類型"]] || 9) ||
-      normalize(a["HH P/N"]).localeCompare(normalize(b["HH P/N"]))
+      normalize(a[hhThis]).localeCompare(normalize(b[hhThis]))
     );
+
+    // 統整 Part Family 缺失（僅針對未結案：本週新增 + 上週仍存在）
+    buildMissingFamilyData(allResults);
 
     $("solvedCount").textContent = allResults.filter(r => r["資料類型"] === "上週已解決").length.toLocaleString();
     $("openCount").textContent = allResults.filter(r => r["資料類型"] === "上週仍存在").length.toLocaleString();
     $("newCount").textContent = allResults.filter(r => r["資料類型"] === "本週新增").length.toLocaleString();
+    $("missingFamilyCount").textContent = missingFamilyList.length.toLocaleString();
 
     const owners = unique(allResults.map(r => normalize(r["Owner"])).filter(Boolean))
       .sort((a,b) => a.localeCompare(b, "zh-Hant"));
@@ -904,7 +859,8 @@ $("compareBtn").addEventListener("click", async () => {
 
     buildRdDashboard(allResults);
 
-    $("status").textContent = `比對成功，共 ${allResults.length.toLocaleString()} 筆資料`;
+    const dateNote = extractedFileDate ? ` (檔案日期：${extractedFileDate})` : "";
+    $("status").textContent = `比對成功，共 ${allResults.length.toLocaleString()} 筆資料${dateNote}`;
   } catch (err) {
     $("status").textContent = "";
     alert("處理失敗：\n" + err.message);
@@ -913,11 +869,121 @@ $("compareBtn").addEventListener("click", async () => {
   }
 });
 
+// 建立缺漏 Part Family 專屬資料結構 (嚴格限定未結案料號)
+function buildMissingFamilyData(rows) {
+  const modelHeader = findHeader(headers, "Model Name") || "Model Name";
+  const hhHeader = findHeader(headers, "HH P/N") || findHeader(headers, "Product P/N") || "HH P/N";
+  const partFamilyHeader = findHeader(headers, "Part Family") || "Part Family";
+  
+  const mfrPnHeader = headers.find(h => /^(manufacturer p\/n|mfr p\/n|mfr pn|vendor p\/n|vendor pn|供應商料號)$/i.test(h)) || 
+                      findHeader(headers, "Product P/N") || hhHeader;
+
+  const mfrHeader = headers.find(h => /^(manufacturer|vendor|mfr|供應商|製造商)$/i.test(h)) || "Manufacturer";
+  const ownerHeader = findHeader(headers, "Owner") || "Owner";
+
+  // 只過濾未結案的資料（排除上週已解決）
+  const pendingRows = rows.filter(r => r["資料類型"] === "本週新增" || r["資料類型"] === "上週仍存在");
+
+  missingFamilyList = [];
+
+  pendingRows.forEach(row => {
+    const rawFamily = normalize(row[partFamilyHeader]);
+    if (rawFamily === "") {
+      const vPn = normalize(row[mfrPnHeader]);
+      const vName = normalize(row[mfrHeader]);
+      
+      let genFamily = "";
+      if (vPn && vName) {
+        genFamily = `${vPn}_${vName}`;
+      } else if (vPn) {
+        genFamily = vPn;
+      } else if (vName) {
+        genFamily = vName;
+      } else {
+        genFamily = "Unknown_Family";
+      }
+
+      missingFamilyList.push({
+        modelName: normalize(row[modelHeader]),
+        hhpn: normalize(row[hhHeader]),
+        vendorPn: vPn,
+        vendorName: vName,
+        dataType: row["資料類型"],
+        generatedFamily: genFamily,
+        owner: normalize(row[ownerHeader]),
+        rawRow: row
+      });
+    }
+  });
+
+  renderMissingFamilyTable();
+  $("missingFamilyCard").style.display = missingFamilyList.length > 0 ? "block" : "none";
+}
+
+function renderMissingFamilyTable() {
+  const tbody = $("missingFamilyBody");
+  const keyword = ($("missingFamilySearch") ? $("missingFamilySearch").value : "").trim().toLowerCase();
+
+  const filtered = missingFamilyList.filter(item => {
+    if (!keyword) return true;
+    return item.modelName.toLowerCase().includes(keyword) ||
+           item.hhpn.toLowerCase().includes(keyword) ||
+           item.vendorPn.toLowerCase().includes(keyword) ||
+           item.vendorName.toLowerCase().includes(keyword) ||
+           item.generatedFamily.toLowerCase().includes(keyword) ||
+           item.owner.toLowerCase().includes(keyword);
+  });
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty">太棒了！未結案資料中沒有缺漏 Part Family 的物料。</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(item => `
+    <tr>
+      <td><b>${escapeHtml(item.modelName || '-')}</b></td>
+      <td style="font-family: monospace;">${escapeHtml(item.hhpn || '-')}</td>
+      <td style="font-family: monospace;">${escapeHtml(item.vendorPn || '-')}</td>
+      <td>${escapeHtml(item.vendorName || '-')}</td>
+      <td><span class="badge ${item.dataType === '本週新增' ? 'badge-new' : 'badge-open'}">${escapeHtml(item.dataType)}</span></td>
+      <td style="font-family: monospace; font-weight: 600; color: #b45309; background: #fffdf5;">${escapeHtml(item.generatedFamily)}</td>
+      <td><b>${escapeHtml(item.owner || '-')}</b></td>
+    </tr>
+  `).join("");
+}
+
+function downloadMissingFamilyExcel() {
+  if (!missingFamilyList || missingFamilyList.length === 0) {
+    alert("目前沒有缺漏 Part Family 的未結案資料！");
+    return;
+  }
+
+  const partFamilyHeader = findHeader(headers, "Part Family") || "Part Family";
+
+  // 將缺失的 Part Family 欄位替換為自動生成好的建議值
+  const exportData = missingFamilyList.map(item => {
+    const rowObj = { ...item.rawRow };
+    rowObj[partFamilyHeader] = item.generatedFamily;
+    rowObj["資料類型"] = item.dataType;
+    return rowObj;
+  });
+
+  const exportHeaders = ["資料類型", ...headers];
+  const aoa = [exportHeaders, ...exportData.map(r => exportHeaders.map(h => r[h] ?? ""))];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "待補PartFamily");
+
+  const dateStr = getDateString();
+  const outName = `Agile_Missing_PartFamily_${dateStr}.xlsx`;
+  XLSX.writeFile(wb, outName);
+}
+
 function buildRdDashboard(rows) {
   parsedDashboardData = {};
 
   const modelHeader = findHeader(headers, "Model Name") || "Model Name";
-  const hhHeader = findHeader(headers, "HH P/N") || "HH P/N";
+  const hhHeader = findHeader(headers, "HH P/N") || findHeader(headers, "Product P/N") || "HH P/N";
 
   const pendingRows = rows.filter(r => r["資料類型"] === "本週新增" || r["資料類型"] === "上週仍存在");
 
@@ -1102,10 +1168,11 @@ function renderTableList() {
   const owner = $("ownerSelect").value.toLowerCase();
   const hh = $("hhSearch").value.trim().toLowerCase();
   const type = $("typeSelect").value;
+  const hhHeader = findHeader(headers, "HH P/N") || findHeader(headers, "Product P/N") || "HH P/N";
 
   const filtered = allResults.filter(r => {
     const okOwner = !owner || normalize(r["Owner"]).toLowerCase() === owner;
-    const okHH = !hh || normalize(r["HH P/N"]).toLowerCase().includes(hh);
+    const okHH = !hh || normalize(r[hhHeader]).toLowerCase().includes(hh);
     const okType = !type || r["資料類型"] === type;
     return okOwner && okHH && okType;
   });
@@ -1179,17 +1246,22 @@ $("downloadPendingBtn").addEventListener("click", () => {
 function executePendingDownload(includeType) {
   closeModal();
   const pendingRows = allResults.filter(r => r["資料類型"] !== "上週已解決");
-  const filename = includeType ? "Excel_未結案資料_含資料類型.xlsx" : "Excel_未結案資料_純原始欄位.xlsx";
+  const dateStr = getDateString();
+  const filename = includeType 
+    ? `Excel_未結案資料_含資料類型_${dateStr}.xlsx` 
+    : `Excel_未結案資料_純原始欄位_${dateStr}.xlsx`;
   downloadRows(pendingRows, filename, includeType);
 }
 
 $("downloadAllBtn").addEventListener("click", () => {
-  downloadRows(allResults, "Excel_每週比對_全部資料.xlsx", true);
+  const dateStr = getDateString();
+  downloadRows(allResults, `Excel_每週比對_全部資料_${dateStr}.xlsx`, true);
 });
 
 $("downloadFilteredBtn").addEventListener("click", () => {
   const filtered = renderTableList();
-  downloadRows(filtered, "Excel_每週比對_搜尋結果.xlsx", true);
+  const dateStr = getDateString();
+  downloadRows(filtered, `Excel_每週比對_搜尋結果_${dateStr}.xlsx`, true);
 });
 </script>
 </body>
