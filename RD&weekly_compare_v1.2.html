@@ -150,7 +150,7 @@
       <h1>每週資料比對 & RD 追蹤儀表板</h1>
       <div class="desc">上傳兩週 Excel 比對料號狀態，並透過 RD 對照清單自動產出待催收信件。</div>
     </div>
-    <button class="secondary" onclick="openRdModal()">📖 查看 RD 對照資料庫</button>
+    <button class="secondary" onclick="openRdModal()">📖 查看 RD & CC 對照資料庫</button>
   </div>
 
   <!-- 1. 上傳與比對 -->
@@ -218,6 +218,10 @@
       <span id="mailTo"></span>
     </div>
     <div class="info-group">
+      <span class="info-label">固定副本 (CC)：</span>
+      <span id="mailCc"></span>
+    </div>
+    <div class="info-group">
       <span class="info-label">信件主旨 (Subject)：</span>
       <span id="mailSubject"></span>
     </div>
@@ -228,11 +232,11 @@
       <div class="action-row">
         <button class="webmail" onclick="sendViaWebOutlook()">🌐 開啟 Outlook 網頁版 (Office 365)</button>
         <button class="success" onclick="copyEmailContent()">📋 一鍵複製內容 (貼入舊版 Outlook)</button>
-        <button class="warning" onclick="downloadEml()">💾 下載 .eml 草稿檔 (可關聯舊 Outlook)</button>
+        <button class="warning" onclick="downloadEml()">💾 下載 .eml 草稿檔 (直接帶入 CC)</button>
         <button class="secondary" onclick="sendViaMailto()">⚙️ 系統預設客戶端 (mailto)</button>
       </div>
       <div id="copyNotice" class="small" style="color: #15803d; margin-top: 8px; display: none; font-weight: bold;">
-        ✅ 已成功複製「收件人、主旨、內文」！請切換到舊版 Outlook 直接貼上。
+        ✅ 已成功複製「收件人、固定 CC、主旨、內文」！請切換到 Outlook 直接貼上。
       </div>
     </div>
   </div>
@@ -293,37 +297,67 @@
   </div>
 </div>
 
-<!-- Modal 2: RD 資料庫唯讀查看彈窗 -->
+<!-- Modal 2: RD 與 CC 資料庫唯讀查看彈窗 -->
 <div class="modal-overlay" id="rdModal">
-  <div class="modal-box" style="max-width: 720px;">
+  <div class="modal-box" style="max-width: 780px;">
     <button class="modal-close-icon" onclick="closeRdModal()">✕</button>
-    <div class="modal-title">RD / Project 對照資料庫</div>
+    <div class="modal-title">RD / Project 對照與 CC 名單資料庫</div>
     <div class="modal-desc" style="margin-bottom: 12px;">
-      此處為目前系統使用的專案對照清單。若需擴充或更新，請於主畫面「③ RD 對照表」直接上傳團隊維護的 Excel 檔。
+      此處為系統目前運作中的對照清單（唯讀）。若需擴充或更新 RD 名單，請下載範本並於主畫面「③ RD 對照表」直接上傳團隊維護的 Excel 檔。
     </div>
 
-    <div style="display:flex; gap:10px; margin-bottom: 12px;">
-      <input type="text" id="rdSearchInput" placeholder="搜尋專案名稱、RD 姓名或 Email..." oninput="filterRdTable()">
-      <button class="secondary" style="white-space:nowrap;" onclick="downloadRdTemplate()">📥 下載 RD 對照表範本</button>
+    <!-- 1. 固定 CC 名單展示 -->
+    <div style="margin-bottom: 16px;">
+      <h3 style="margin: 0 0 8px; font-size: 15px; color: #1e40af;">📌 系統固定 CC 副本名單（每一封信皆自動帶入）</h3>
+      <div class="table-wrap" style="max-height: 150px;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 25%;">角色 / 項目</th>
+              <th style="width: 30%;">姓名</th>
+              <th style="width: 45%;">Email</th>
+            </tr>
+          </thead>
+          <tbody id="fixedCcBody"></tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="table-wrap" style="max-height: 360px;">
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 30%;">Project (Model)</th>
-            <th style="width: 25%;">RD 姓名</th>
-            <th style="width: 45%;">RD Email</th>
-          </tr>
-        </thead>
-        <tbody id="rdDbModalBody"></tbody>
-      </table>
+    <!-- 2. RD 專案名單展示 -->
+    <div>
+      <h3 style="margin: 0 0 8px; font-size: 15px; color: #0f172a;">🏢 專案與負責 RD 對照清單</h3>
+      <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom: 10px;">
+        <input type="text" id="rdSearchInput" placeholder="搜尋專案名稱、RD 姓名或 Email..." oninput="filterRdTable()">
+        <button class="secondary" style="white-space:nowrap;" onclick="downloadRdTemplate()">📥 下載 RD 對照表範本</button>
+      </div>
+
+      <div class="table-wrap" style="max-height: 250px;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 30%;">Project (Model)</th>
+              <th style="width: 15%;">角色</th>
+              <th style="width: 25%;">RD 姓名</th>
+              <th style="width: 30%;">RD Email</th>
+            </tr>
+          </thead>
+          <tbody id="rdDbModalBody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>
 
 <script>
-// 預設 RD 資料庫 (支援單一物件或陣列)
+// 固定 CC 名單資料庫
+const fixedCcList = [
+  { role: "CC", name: "Doing Wang 王斯弘", email: "doing.sy.wang@ingrasys.com" },
+  { role: "CC", name: "Sam Taso 曹勝峰", email: "sam.sf.taso@ingrasys.com" },
+  { role: "CC", name: "Doris Hsu 許綿瑩", email: "doris.my.hsu@ingrasys.com" },
+  { role: "CC", name: "Lisa Chang 張庭毓", email: "lisa.ty.chang@ingrasys.com" }
+];
+
+// 預設 RD 資料庫
 const defaultRdDatabase = {
   "C4143": [
     { role: "EE", name: "Vance Yang 楊竣翔", email: "vance.ch.yang@fii-foxconn.com" },
@@ -609,14 +643,15 @@ const defaultRdDatabase = {
 };
 
 let rdDatabase = JSON.parse(JSON.stringify(defaultRdDatabase));
+const globalCcString = fixedCcList.map(item => item.email).join("; ");
+
 let allResults = [];
 let headers = [];
 let parsedDashboardData = {};
-let currentMailData = { to: "", subject: "", body: "" };
+let currentMailData = { to: "", cc: "", subject: "", body: "" };
 
 const $ = id => document.getElementById(id);
 
-// 輔助函式：確保取出的 RD 名單一定為 Array 格式
 function getRdList(keyOrObj) {
   if (!keyOrObj) return [];
   const val = typeof keyOrObj === 'string' ? rdDatabase[keyOrObj] : keyOrObj;
@@ -624,7 +659,18 @@ function getRdList(keyOrObj) {
   return Array.isArray(val) ? val : [val];
 }
 
-// 渲染 RD Modal 清單（唯讀）
+// 渲染 Modal 內容（唯讀）
+function renderFixedCcTable() {
+  const tbody = $("fixedCcBody");
+  tbody.innerHTML = fixedCcList.map(item => `
+    <tr>
+      <td><span class="badge badge-open">${escapeHtml(item.role)}</span></td>
+      <td><b>${escapeHtml(item.name)}</b></td>
+      <td>${escapeHtml(item.email)}</td>
+    </tr>
+  `).join("");
+}
+
 function renderRdDbModal(filterText = "") {
   const tbody = $("rdDbModalBody");
   const keyword = filterText.toLowerCase().trim();
@@ -636,27 +682,30 @@ function renderRdDbModal(filterText = "") {
     const matchKey = key.toLowerCase().includes(keyword);
     const matchMember = list.some(m => 
       (m.name && m.name.toLowerCase().includes(keyword)) || 
-      (m.email && m.email.toLowerCase().includes(keyword))
+      (m.email && m.email.toLowerCase().includes(keyword)) ||
+      (m.role && m.role.toLowerCase().includes(keyword))
     );
     return matchKey || matchMember;
   });
 
   if (!entries.length) {
-    tbody.innerHTML = `<tr><td colspan="3" class="empty">找不到符合條件的 RD 資料</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="empty">找不到符合條件的 RD 資料</td></tr>`;
     return;
   }
 
   tbody.innerHTML = entries.map(({ key, list }) => `
     <tr>
       <td><b>${escapeHtml(key)}</b></td>
-      <td>${list.map(m => `<div class="member-item">${escapeHtml(m.name)}</div>`).join("")}</td>
-      <td>${list.map(m => `<div class="member-item">${escapeHtml(m.email)}</div>`).join("")}</td>
+      <td>${list.length > 0 ? list.map(m => `<div class="member-item">${escapeHtml(m.role || '-')}</div>`).join("") : '<span style="color:#94a3b8">-</span>'}</td>
+      <td>${list.length > 0 ? list.map(m => `<div class="member-item">${escapeHtml(m.name || '未命名')}</div>`).join("") : '<span style="color:#94a3b8">(無成員)</span>'}</td>
+      <td>${list.length > 0 ? list.map(m => `<div class="member-item">${escapeHtml(m.email || '-')}</div>`).join("") : '<span style="color:#94a3b8">-</span>'}</td>
     </tr>
   `).join("");
 }
 
 function openRdModal() {
   $("rdSearchInput").value = "";
+  renderFixedCcTable();
   renderRdDbModal();
   $("rdModal").style.display = "flex";
 }
@@ -669,14 +718,13 @@ function filterRdTable() {
   renderRdDbModal($("rdSearchInput").value);
 }
 
-// 下載 RD 對照表範本
+// 下載標準範本（供團隊離線維護）
 function downloadRdTemplate() {
   const aoa = [
-    ["Model Name", "RD Name", "RD Email"],
-    ["C4143", "Jenny", "jenny.jz.zheng@ingrasys.com"],
-    ["C4143", "Amber Chen", "cesbg-epdii-pe-bom@ingrasys.com"],
-    ["C4143", "Dan", "dan.cf.kao@ingrasys.com"],
-    ["HGX_RUBIN_NVL", "Kerwin", "kerwin.dh.hsieh@ingrasys.com"]
+    ["Model Name", "Role", "RD Name", "RD Email"],
+    ["C4143", "SE", "Nick Liao 廖家二", "nick.ce.liao@fii-foxconn.com"],
+    ["C4143", "EE", "Vance Yang 楊竣翔", "vance.ch.yang@fii-foxconn.com"],
+    ["HGX_RUBIN_NVL", "SE", "Kerwin", "kerwin.dh.hsieh@ingrasys.com"]
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
@@ -698,7 +746,6 @@ function normalize(v) {
   return String(v ?? "").trim();
 }
 
-// 移除 空白、底線、減號、正斜線、反斜線，讓 MONZA83_84 與 MONZA83/84 視為相同
 function cleanString(str) {
   return String(str || '').toLowerCase().replace(/[\s_\-\/\\]/g, '');
 }
@@ -731,24 +778,16 @@ function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
 }
 
-// 修正後的精準比對演算法：
-// 1. 完全相同優先比對
-// 2. 依照關鍵字長度由長到短排序比對，避免被短字串提前攔截
 function findMatchedProject(excelModelName) {
   const cleanExcelName = cleanString(excelModelName);
   if (!cleanExcelName) return null;
 
-  // 1. 優先精準完全符合
   for (const key in rdDatabase) {
     const cleanKey = cleanString(key);
-    if (cleanExcelName === cleanKey) {
-      return key;
-    }
+    if (cleanExcelName === cleanKey) return key;
   }
 
-  // 2. 依照長度由長至短排序，避免短字串如 VR200 攔截了長字串 GOOGLE_VR200 / ORACLE VR200
   const sortedKeys = Object.keys(rdDatabase).sort((a, b) => b.length - a.length);
-
   for (const key of sortedKeys) {
     const cleanKey = cleanString(key);
     if (!cleanKey) continue;
@@ -778,11 +817,12 @@ $("compareBtn").addEventListener("click", async () => {
       const tempDb = {};
       rdRows.forEach(r => {
         const mKey = normalize(r["Model Name"] || r["Project"] || r["Model"]);
+        const rRole = normalize(r["Role"] || r["角色"] || "SE");
         const rName = normalize(r["RD Name"] || r["RD 姓名"] || r["Name"]);
         const rEmail = normalize(r["RD Email"] || r["Email"]);
         if (mKey && rEmail) {
           if (!tempDb[mKey]) tempDb[mKey] = [];
-          tempDb[mKey].push({ name: rName || "未命名", email: rEmail });
+          tempDb[mKey].push({ role: rRole, name: rName || "未命名", email: rEmail });
         }
       });
       if (Object.keys(tempDb).length > 0) {
@@ -980,11 +1020,12 @@ ${hhpnText}
 Thank you!`;
 
   currentMailData.to = toRecipients;
-  // 改為指定的主旨格式
+  currentMailData.cc = globalCcString;
   currentMailData.subject = `[${projectName}] 請協助上傳 Datasheet`;
   currentMailData.body = emailBody;
 
   $("mailTo").textContent = currentMailData.to;
+  $("mailCc").textContent = currentMailData.cc;
   $("mailSubject").textContent = currentMailData.subject;
   $("mailBody").value = currentMailData.body;
   $("copyNotice").style.display = "none";
@@ -996,14 +1037,23 @@ Thank you!`;
 function sendViaWebOutlook() {
   if (!currentMailData.to) return alert("請先產生信件內容！");
   const body = $("mailBody").value;
-  const webUrl = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(currentMailData.to)}&subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(body)}`;
+  const toList = currentMailData.to.replace(/;/g, ",");
+  let webUrl = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(toList)}&subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(body)}`;
+  if (currentMailData.cc) {
+    const ccList = currentMailData.cc.replace(/;/g, ",");
+    webUrl += `&copyTo=${encodeURIComponent(ccList)}`;
+  }
   window.open(webUrl, '_blank');
 }
 
 function copyEmailContent() {
   if (!currentMailData.to) return alert("請先產生信件內容！");
   const body = $("mailBody").value;
-  const fullText = `收件人：${currentMailData.to}\n主旨：${currentMailData.subject}\n\n${body}`;
+  let fullText = `收件人：${currentMailData.to}\n`;
+  if (currentMailData.cc) {
+    fullText += `副本 (CC)：${currentMailData.cc}\n`;
+  }
+  fullText += `主旨：${currentMailData.subject}\n\n${body}`;
 
   navigator.clipboard.writeText(fullText).then(() => {
     $("copyNotice").style.display = "block";
@@ -1023,13 +1073,12 @@ function downloadEml() {
   if (!currentMailData.to) return alert("請先產生信件內容！");
   const body = $("mailBody").value;
   
-  const emlContent = 
-`To: ${currentMailData.to}
-Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(currentMailData.subject)))}?=
-X-Unsent: 1
-Content-Type: text/plain; charset=utf-8
-
-${body}`;
+  let emlContent = `To: ${currentMailData.to}\n`;
+  if (currentMailData.cc) {
+    emlContent += `Cc: ${currentMailData.cc}\n`;
+  }
+  emlContent += `Subject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(currentMailData.subject)))}?=\n`;
+  emlContent += `X-Unsent: 1\nContent-Type: text/plain; charset=utf-8\n\n${body}`;
 
   const blob = new Blob([emlContent], { type: 'message/rfc822' });
   const a = document.createElement('a');
@@ -1042,7 +1091,10 @@ ${body}`;
 function sendViaMailto() {
   if (!currentMailData.to) return alert("沒有可發送的信件資料！");
   const mailBodyVal = $("mailBody").value;
-  const mailtoUrl = `mailto:${encodeURIComponent(currentMailData.to)}?subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(mailBodyVal)}`;
+  let mailtoUrl = `mailto:${encodeURIComponent(currentMailData.to)}?subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(mailBodyVal)}`;
+  if (currentMailData.cc) {
+    mailtoUrl += `&cc=${encodeURIComponent(currentMailData.cc)}`;
+  }
   window.location.href = mailtoUrl;
 }
 
