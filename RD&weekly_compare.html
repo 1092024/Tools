@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>每週資料比對 & RD 追蹤與待補 Part Family 整合工具</title>
-<!-- SheetJS 解析與匯出 Excel -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<!-- 支援樣式 (黑底白字) 的 Excel 處理庫 -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -121,7 +121,7 @@
     justify-content: center; z-index: 9999; backdrop-filter: blur(2px);
   }
   .modal-box {
-    background: white; width: 100%; max-width: 440px; border-radius: 12px;
+    background: white; width: 100%; max-width: 460px; border-radius: 12px;
     padding: 24px; box-shadow: 0 10px 25px rgba(0,0,0,0.15); position: relative;
     animation: fadeIn 0.15s ease-out;
   }
@@ -136,6 +136,12 @@
 
   .member-item { margin-bottom: 4px; }
   .member-item:last-child { margin-bottom: 0; }
+
+  .cc-chip-box {
+    background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px;
+    padding: 12px; font-family: monospace; font-size: 13px; color: #1e293b;
+    word-break: break-all; margin-bottom: 16px; user-select: all; line-height: 1.6;
+  }
 
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-8px); }
@@ -153,7 +159,7 @@
   <div class="page-header">
     <div>
       <h1>每週資料比對 & RD 追蹤與 Part Family 整合儀表板</h1>
-      <div class="desc">比對兩週 Excel，自動篩選尚未結案之項目 mapping RD 發信，並對未結案缺漏 Part Family 之物料自動生成建議。</div>
+      <div class="desc">比對兩週 Excel，自動篩選尚未結案之項目 mapping RD 發信，並對未結案缺漏 Part Family 之物料自動生成建議（匯出標題黑底白字，支援自選存檔位置）。</div>
     </div>
     <button class="secondary" onclick="openRdModal()">📖 查看 RD & CC 對照資料庫</button>
   </div>
@@ -239,7 +245,7 @@
     <div class="send-options">
       <h4>👉 請選擇發送 / 處理方式：</h4>
       <div class="action-row">
-        <button class="webmail" onclick="sendViaWebOutlook()">🌐 開啟 Outlook 網頁版 (Office 365)</button>
+        <button class="webmail" onclick="openOutlookWebNotice()">🌐 開啟 Outlook 網頁版 (Office 365)</button>
         <button class="success" onclick="copyEmailContent()">📋 一鍵複製內容 (貼入 Outlook)</button>
         <button class="warning" onclick="downloadEml()">💾 下載 .eml 草稿檔 (直接帶入 CC)</button>
         <button class="secondary" onclick="sendViaMailto()">⚙️ 系統預設客戶端 (mailto)</button>
@@ -389,6 +395,31 @@
           <tbody id="rdDbModalBody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 3: 網頁版 Outlook CC 限制提醒彈窗 -->
+<div class="modal-overlay" id="webMailModal">
+  <div class="modal-box" style="max-width: 520px;">
+    <button class="modal-close-icon" onclick="closeOutlookWebNotice()">✕</button>
+    <div class="modal-title" style="color: #0369a1; display:flex; align-items:center; gap:6px;">
+      🌐 Outlook 網頁版發信提醒
+    </div>
+    <div class="modal-desc" style="margin-bottom: 14px;">
+      因微軟 Outlook 網頁版連結規範限制，系統<strong>無法透過網址自動帶入副本 (CC) 名單</strong>。<br>
+      請點擊下方按鈕複製 CC 名單，於開啟的網頁版郵件「副本」欄位直接貼上即可：
+    </div>
+
+    <div class="cc-chip-box" id="modalCcDisplay"></div>
+
+    <div id="modalCopyNotice" style="color: #15803d; font-size: 13px; font-weight: bold; margin-bottom: 12px; display: none;">
+      ✅ CC 名單已複製到剪貼簿！
+    </div>
+
+    <div class="modal-actions">
+      <button class="secondary" onclick="copyModalCc()">📋 一鍵複製 CC 名單</button>
+      <button class="primary" onclick="proceedToWebOutlook()">前往開啟 Outlook 網頁版 ↗</button>
     </div>
   </div>
 </div>
@@ -611,6 +642,58 @@ function getDateString() {
   return `${year}${month}${day}`;
 }
 
+// 通用支援「選擇存檔路徑 (showSaveFilePicker)」函式
+async function saveWorkbookWithPicker(wb, defaultFileName) {
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: defaultFileName,
+        types: [{
+          description: 'Excel 試算表 (*.xlsx)',
+          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+        }]
+      });
+      const writable = await handle.createWritable();
+      const u8 = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      await writable.write(u8);
+      await writable.close();
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return; // 使用者主動取消存檔
+      console.warn("使用系統檔案選擇器失敗，改用預設下載方式", err);
+    }
+  }
+  XLSX.writeFile(wb, defaultFileName);
+}
+
+// 將工作表第 1 列標題套用「黑底白字粗體」樣式
+function applyHeaderStyle(worksheet) {
+  if (!worksheet || !worksheet['!ref']) return;
+  const range = XLSX.utils.decode_range(worksheet['!ref']);
+  
+  const headerStyle = {
+    fill: {
+      fgColor: { rgb: "000000" }
+    },
+    font: {
+      name: "Microsoft JhengHei",
+      sz: 11,
+      bold: true,
+      color: { rgb: "FFFFFF" }
+    },
+    alignment: {
+      vertical: "center",
+      horizontal: "center"
+    }
+  };
+
+  for (let C = range.s.c; C <= range.e.c; ++C) {
+    const cellAddress = XLSX.utils.encode_cell({ r: 0, c: C });
+    if (!worksheet[cellAddress]) continue;
+    worksheet[cellAddress].s = headerStyle;
+  }
+}
+
 function renderFixedCcTable() {
   const tbody = $("fixedCcBody");
   tbody.innerHTML = fixedCcList.map(item => `
@@ -669,16 +752,17 @@ function filterRdTable() {
   renderRdDbModal($("rdSearchInput").value);
 }
 
-function downloadRdTemplate() {
+async function downloadRdTemplate() {
   const aoa = [
     ["Model Name", "Role", "RD Name", "RD Email"],
     ["C4143", "SE", "Nick Liao 廖家二", "nick.ce.liao@fii-foxconn.com"],
     ["C4143", "EE", "Vance Yang 楊竣翔", "vance.ch.yang@fii-foxconn.com"]
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  applyHeaderStyle(ws);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "RD對照表");
-  XLSX.writeFile(wb, "RD對照表_範本.xlsx");
+  await saveWorkbookWithPicker(wb, "RD對照表_範本.xlsx");
 }
 
 $("lastFile").addEventListener("change", e => {
@@ -869,7 +953,6 @@ $("compareBtn").addEventListener("click", async () => {
   }
 });
 
-// 建立缺漏 Part Family 專屬資料結構 (嚴格限定未結案料號)
 function buildMissingFamilyData(rows) {
   const modelHeader = findHeader(headers, "Model Name") || "Model Name";
   const hhHeader = findHeader(headers, "HH P/N") || findHeader(headers, "Product P/N") || "HH P/N";
@@ -881,7 +964,6 @@ function buildMissingFamilyData(rows) {
   const mfrHeader = headers.find(h => /^(manufacturer|vendor|mfr|供應商|製造商)$/i.test(h)) || "Manufacturer";
   const ownerHeader = findHeader(headers, "Owner") || "Owner";
 
-  // 只過濾未結案的資料（排除上週已解決）
   const pendingRows = rows.filter(r => r["資料類型"] === "本週新增" || r["資料類型"] === "上週仍存在");
 
   missingFamilyList = [];
@@ -952,7 +1034,8 @@ function renderMissingFamilyTable() {
   `).join("");
 }
 
-function downloadMissingFamilyExcel() {
+// 下載缺漏 Part Family 清單 (套用黑底白字標題 + 支援選擇存檔路徑)
+async function downloadMissingFamilyExcel() {
   if (!missingFamilyList || missingFamilyList.length === 0) {
     alert("目前沒有缺漏 Part Family 的未結案資料！");
     return;
@@ -960,7 +1043,6 @@ function downloadMissingFamilyExcel() {
 
   const partFamilyHeader = findHeader(headers, "Part Family") || "Part Family";
 
-  // 將缺失的 Part Family 欄位替換為自動生成好的建議值
   const exportData = missingFamilyList.map(item => {
     const rowObj = { ...item.rawRow };
     rowObj[partFamilyHeader] = item.generatedFamily;
@@ -971,12 +1053,15 @@ function downloadMissingFamilyExcel() {
   const exportHeaders = ["資料類型", ...headers];
   const aoa = [exportHeaders, ...exportData.map(r => exportHeaders.map(h => r[h] ?? ""))];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  
+  applyHeaderStyle(ws);
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "待補PartFamily");
 
   const dateStr = getDateString();
   const outName = `Agile_Missing_PartFamily_${dateStr}.xlsx`;
-  XLSX.writeFile(wb, outName);
+  await saveWorkbookWithPicker(wb, outName);
 }
 
 function buildRdDashboard(rows) {
@@ -1100,15 +1185,31 @@ Thank you!`;
   $("emailCard").scrollIntoView({ behavior: 'smooth' });
 }
 
-function sendViaWebOutlook() {
+// 開啟 Outlook 網頁版專屬提示彈窗
+function openOutlookWebNotice() {
   if (!currentMailData.to) return alert("請先產生信件內容！");
+  $("modalCcDisplay").textContent = currentMailData.cc || globalCcString;
+  $("modalCopyNotice").style.display = "none";
+  $("webMailModal").style.display = "flex";
+}
+
+function closeOutlookWebNotice() {
+  $("webMailModal").style.display = "none";
+}
+
+function copyModalCc() {
+  const ccText = currentMailData.cc || globalCcString;
+  navigator.clipboard.writeText(ccText).then(() => {
+    $("modalCopyNotice").style.display = "block";
+    setTimeout(() => { $("modalCopyNotice").style.display = "none"; }, 4000);
+  });
+}
+
+function proceedToWebOutlook() {
+  closeOutlookWebNotice();
   const body = $("mailBody").value;
   const toList = currentMailData.to.replace(/;/g, ",");
-  let webUrl = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(toList)}&subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(body)}`;
-  if (currentMailData.cc) {
-    const ccList = currentMailData.cc.replace(/;/g, ",");
-    webUrl += `&copyTo=${encodeURIComponent(ccList)}`;
-  }
+  const webUrl = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(toList)}&subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(body)}`;
   window.open(webUrl, '_blank');
 }
 
@@ -1219,14 +1320,18 @@ $("clearBtn").addEventListener("click", () => {
   renderTableList();
 });
 
-function downloadRows(rows, filename, includeType = true) {
+// 通用匯出函式 (套用黑底白字標題 + 支援選擇存檔路徑)
+async function downloadRows(rows, filename, includeType = true) {
   if (!rows.length) return alert("目前沒有可下載的資料。");
   const exportHeaders = includeType ? ["資料類型", ...headers] : [...headers];
   const aoa = [exportHeaders, ...rows.map(r => exportHeaders.map(h => r[h] ?? ""))];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
+  
+  applyHeaderStyle(ws);
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "比對結果");
-  XLSX.writeFile(wb, filename);
+  await saveWorkbookWithPicker(wb, filename);
 }
 
 function openModal() {
@@ -1243,25 +1348,25 @@ $("downloadPendingBtn").addEventListener("click", () => {
   openModal();
 });
 
-function executePendingDownload(includeType) {
+async function executePendingDownload(includeType) {
   closeModal();
   const pendingRows = allResults.filter(r => r["資料類型"] !== "上週已解決");
   const dateStr = getDateString();
   const filename = includeType 
     ? `Excel_未結案資料_含資料類型_${dateStr}.xlsx` 
     : `Excel_未結案資料_純原始欄位_${dateStr}.xlsx`;
-  downloadRows(pendingRows, filename, includeType);
+  await downloadRows(pendingRows, filename, includeType);
 }
 
-$("downloadAllBtn").addEventListener("click", () => {
+$("downloadAllBtn").addEventListener("click", async () => {
   const dateStr = getDateString();
-  downloadRows(allResults, `Excel_每週比對_全部資料_${dateStr}.xlsx`, true);
+  await downloadRows(allResults, `Excel_每週比對_全部資料_${dateStr}.xlsx`, true);
 });
 
-$("downloadFilteredBtn").addEventListener("click", () => {
+$("downloadFilteredBtn").addEventListener("click", async () => {
   const filtered = renderTableList();
   const dateStr = getDateString();
-  downloadRows(filtered, `Excel_每週比對_搜尋結果_${dateStr}.xlsx`, true);
+  await downloadRows(filtered, `Excel_每週比對_搜尋結果_${dateStr}.xlsx`, true);
 });
 </script>
 </body>
