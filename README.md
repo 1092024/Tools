@@ -1,7 +1,7 @@
 # Tools
-<a href="https://1092024.github.io/Tools/Find_Project_Owner_v1.1">找專案Owner</a>
+<a href="https://1092024.github.io/Tools/Find_Project_Owner">找專案Owner</a>
 <br>
-<a href="https://1092024.github.io/Tools/RD&weekly_compare_v1.2">找專案RD</a>
+<a href="https://1092024.github.io/Tools/RD&weekly_compare">找專案RD</a>
 
 <h2>History</h2>
 <h4>2026/09/24</h4>
