@@ -23,7 +23,7 @@
         <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <i class="fa-solid fa-file-excel text-emerald-600"></i> Model Name 比對與 Owner 自動填入系統
         </h1>
-        <p class="text-sm text-slate-500 mt-1">自動排除空白及僅有 "N" 的 Model Name 列、公式覆寫 Model Name、比對 Owner，並統整無 Part Family 物料。</p>
+        <p class="text-sm text-slate-500 mt-1">自動排除空白及僅有 "N" 的 Model Name 列、公式覆寫 Model Name、比對負責 Owner。</p>
       </div>
       <button onclick="toggleReferenceModal()" class="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition font-medium flex items-center gap-2">
         <i class="fa-solid fa-database"></i> 檢視對照資料庫 (<span id="refCount">0</span> 筆)
@@ -37,7 +37,7 @@
         <label for="excelFile" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/30 transition rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer text-center block h-full">
           <i class="fa-solid fa-cloud-arrow-up text-4xl text-emerald-600 mb-3"></i>
           <span class="font-semibold text-slate-700">點擊上傳或拖曳 Excel 檔案至此 (.xlsx / .xls)</span>
-          <span class="text-xs text-slate-400 mt-1">系統將自動分析檔名日期，並排除 Model Name 為空白或僅為 "N" 的資料列</span>
+          <span class="text-xs text-slate-400 mt-1">系統將自動分析檔名日期，並排除 Model Name 空白或僅為 "N" 的資料列</span>
           <input type="file" id="excelFile" accept=".xlsx, .xls" class="hidden">
         </label>
       </div>
@@ -73,19 +73,16 @@
           <button id="downloadFilteredBtn" onclick="downloadFilteredExcel()" disabled class="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs">
             <i class="fa-solid fa-filter"></i> 下載篩選結果 Excel (黑底白字標題)
           </button>
-          <button id="downloadMissingFamilyBtn" onclick="downloadMissingFamilyExcel()" disabled class="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs">
-            <i class="fa-solid fa-file-circle-exclamation"></i> 下載無 Part Family 專用清單
-          </button>
         </div>
       </div>
     </div>
 
-    <!-- 1. 比對結果預覽主表 -->
+    <!-- 比對結果預覽主表 -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
       <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
         <div class="flex items-center gap-2">
           <h3 class="font-bold text-slate-800 flex items-center gap-2">
-            <i class="fa-solid fa-table"></i> 1. Model & Owner 比對結果預覽
+            <i class="fa-solid fa-table"></i> Model & Owner 比對結果預覽
           </h3>
           <span id="matchStats" class="text-xs bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-medium">尚未上傳檔案</span>
         </div>
@@ -122,7 +119,7 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto max-h-[460px] p-2">
+      <div class="overflow-x-auto max-h-[500px] p-2">
         <table class="w-full text-left text-xs border-collapse">
           <thead id="tableHead" class="bg-slate-100 text-slate-600 font-semibold uppercase sticky top-0 border-b">
             <tr>
@@ -130,56 +127,13 @@
               <th class="p-3">公式後 Model Name</th>
               <th class="p-3">Product P/N</th>
               <th class="p-3">Manufacturer</th>
-              <th class="p-3">Part Family</th>
               <th class="p-3">Owner (自動比對結果)</th>
               <th class="p-3">比對狀態</th>
             </tr>
           </thead>
           <tbody id="tableBody" class="divide-y divide-slate-100">
             <tr>
-              <td colspan="7" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- 2. 無 Part Family 之統整表格 -->
-    <div id="missingFamilyCard" class="bg-white rounded-2xl shadow-sm border border-amber-200 overflow-hidden">
-      <div class="p-4 bg-amber-50/70 border-b border-amber-200 flex flex-wrap justify-between items-center gap-3">
-        <div class="flex items-center gap-2">
-          <h3 class="font-bold text-amber-900 flex items-center gap-2">
-            <i class="fa-solid fa-triangle-exclamation text-amber-600"></i> 2. 待補 Part Family 統整清單 (自動生成: 供應商料號_供應商)
-          </h3>
-          <span id="missingFamilyStats" class="text-xs bg-amber-200 text-amber-900 px-2.5 py-1 rounded-full font-medium">尚未讀取</span>
-        </div>
-        <div class="flex items-center gap-2">
-          <div class="relative">
-            <input type="text" id="missingFamilySearch" oninput="renderMissingFamilyTable()" placeholder="搜尋待補物料..." class="pl-7 pr-3 py-1.5 border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-xs w-48">
-            <i class="fa-solid fa-magnifying-glass text-amber-500 absolute left-2.5 top-2.5"></i>
-          </div>
-          <button onclick="downloadMissingFamilyExcel()" class="py-1.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg transition shadow-sm flex items-center gap-1.5 text-xs">
-            <i class="fa-solid fa-download"></i> 下載此表 (.xlsx)
-          </button>
-        </div>
-      </div>
-
-      <div class="overflow-x-auto max-h-[460px] p-2">
-        <table class="w-full text-left text-xs border-collapse">
-          <thead class="bg-amber-100/70 text-amber-900 font-semibold sticky top-0 border-b">
-            <tr>
-              <th class="p-3">Model Name</th>
-              <th class="p-3">Product P/N</th>
-              <th class="p-3">供應商料號 (Mfr P/N)</th>
-              <th class="p-3">供應商 (Manufacturer)</th>
-              <th class="p-3">原始 Part Family</th>
-              <th class="p-3 text-amber-800">生成 Part Family (供應商料號_供應商)</th>
-              <th class="p-3">負責 Owner</th>
-            </tr>
-          </thead>
-          <tbody id="missingFamilyTableBody" class="divide-y divide-slate-100">
-            <tr>
-              <td colspan="7" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以統整未填寫 Part Family 之項目</td>
+              <td colspan="6" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td>
             </tr>
           </tbody>
         </table>
@@ -393,14 +347,11 @@
     let globalWorkbook = null;
     let globalJsonData = [];
     let originalFileName = "";
-    let extractedFileDate = ""; // 儲存由檔名提取出的 YYYYMMDD
-    let extractedFileDateFormatted = ""; // 格式化為 YYYY/MM/DD
+    let extractedFileDate = "";
+    let extractedFileDateFormatted = "";
     let originalHeaders = [];
     let modelNameKey = "Model Name";
     let ownerKey = "Owner";
-    let partFamilyKey = "Part Family";
-    let mfrPnKey = "Manufacturer P/N";
-    let mfrKey = "Manufacturer";
     let removedInvalidCount = 0;
 
     document.getElementById('refCount').innerText = referenceData.length;
@@ -409,7 +360,6 @@
     document.querySelectorAll('input[name="previewFormat"]').forEach(radio => {
       radio.addEventListener('change', () => {
         renderTable();
-        renderMissingFamilyTable();
       });
     });
 
@@ -418,12 +368,9 @@
       if (!filename) return { raw: "", formatted: "" };
       const match = filename.match(/(?:_|\b)(\d{4})[-_](\d{2})[-_](\d{2})(?:[-_]|\b)/);
       if (match) {
-        const year = match[1];
-        const month = match[2];
-        const day = match[3];
         return {
-          raw: `${year}${month}${day}`,
-          formatted: `${year}/${month}/${day}`
+          raw: `${match[1]}${match[2]}${match[3]}`,
+          formatted: `${match[1]}/${match[2]}/${match[3]}`
         };
       }
       return { raw: "", formatted: "" };
@@ -431,9 +378,7 @@
 
     // 取得下載檔名所用的日期字串：優先讀取檔名，讀不到則取當天
     function getDateString() {
-      if (extractedFileDate) {
-        return extractedFileDate;
-      }
+      if (extractedFileDate) return extractedFileDate;
       const now = new Date();
       const year = now.getFullYear();
       const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -446,7 +391,6 @@
       if (!file) return;
       originalFileName = file.name;
 
-      // 擷取檔名中的日期 (如: 2026-09-15 轉為 20260915 與 2026/09/15)
       const parsedDate = extractDateFromFileName(originalFileName);
       extractedFileDate = parsedDate.raw;
       extractedFileDateFormatted = parsedDate.formatted;
@@ -468,23 +412,14 @@
 
         modelNameKey = originalHeaders.find(h => /^(model name|model|project)$/i.test(h)) || "Model Name";
         ownerKey = originalHeaders.find(h => /^owner$/i.test(h)) || "Owner";
-        partFamilyKey = originalHeaders.find(h => /^(part family|partfamily|family)$/i.test(h)) || "Part Family";
-        
-        mfrPnKey = originalHeaders.find(h => /^(manufacturer p\/n|mfr p\/n|mfr pn|vendor p\/n|vendor pn|供應商料號)$/i.test(h)) || 
-                   originalHeaders.find(h => /^(product p\/n|part number|pn)$/i.test(h)) || "Manufacturer P/N";
-
-        mfrKey = originalHeaders.find(h => /^(manufacturer|vendor|mfr|供應商|製造商)$/i.test(h)) || "Manufacturer";
 
         if (!originalHeaders.includes(ownerKey)) {
           originalHeaders.push(ownerKey);
         }
-        if (!originalHeaders.includes(partFamilyKey)) {
-          originalHeaders.push(partFamilyKey);
-        }
 
         const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-        // 1. 刪除沒有 Model Name 或是只有單一字元 "N" 的資料列
+        // 刪除沒有 Model Name 或是只有單一字元 "N" 的資料列
         const originalTotal = rawJson.length;
         const validRows = rawJson.filter(row => {
           const rawVal = row[modelNameKey] || row["Model Name"] || row["Model"] || row["Project"] || "";
@@ -497,37 +432,15 @@
 
         removedInvalidCount = originalTotal - validRows.length;
 
-        // 2. 執行公式擷取並覆寫原欄位，同時處理 Part Family 自動生成建議值
+        // 執行公式擷取並覆寫原欄位
         globalJsonData = validRows.map((row, idx) => {
           const currentModelVal = row[modelNameKey] || row["Model Name"] || row["Model"] || row["Project"] || "";
           const extractedVal = extractByExcelFormula(currentModelVal);
-          
-          const rawPartFamily = String(row[partFamilyKey] || "").trim();
-          const hasFamily = rawPartFamily !== "";
-
-          const vendorPn = String(row[mfrPnKey] || row["Manufacturer P/N"] || row["Product P/N"] || row["Part Number"] || row["PN"] || "").trim();
-          const vendorName = String(row[mfrKey] || row["Manufacturer"] || row["Vendor"] || "").trim();
-          
-          let generatedFamily = "";
-          if (vendorPn && vendorName) {
-            generatedFamily = `${vendorPn}_${vendorName}`;
-          } else if (vendorPn) {
-            generatedFamily = vendorPn;
-          } else if (vendorName) {
-            generatedFamily = vendorName;
-          } else {
-            generatedFamily = "Unknown_Family";
-          }
 
           return {
             ...row,
             __rawModelName: currentModelVal,
             [modelNameKey]: extractedVal,
-            __hasPartFamily: hasFamily,
-            __rawPartFamily: rawPartFamily,
-            __generatedFamily: generatedFamily,
-            __vendorPn: vendorPn,
-            __vendorName: vendorName,
             __origIndex: idx
           };
         });
@@ -535,7 +448,6 @@
         processAndRender();
         document.getElementById('downloadAllBtn').disabled = false;
         document.getElementById('downloadFilteredBtn').disabled = false;
-        document.getElementById('downloadMissingFamilyBtn').disabled = false;
       };
       reader.readAsArrayBuffer(file);
     });
@@ -544,17 +456,13 @@
       if (!rawVal) return "";
       const str = String(rawVal).trim();
       const firstSpaceIdx = str.indexOf(" ");
-      if (firstSpaceIdx === -1) {
-        return str;
-      }
+      if (firstSpaceIdx === -1) return str;
       return str.substring(firstSpaceIdx + 1).trim();
     }
 
     function normalizeStr(str) {
       if (!str) return "";
-      return String(str)
-        .toLowerCase()
-        .replace(/[\s\-_/]/g, "");
+      return String(str).toLowerCase().replace(/[\s\-_/]/g, "");
     }
 
     function findOwner(modelName, rowData = {}) {
@@ -583,9 +491,7 @@
 
       const isSpecialExcludedPn = /^p[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/i.test(rawPn);
 
-      if (isSpecialGpuModel && isSpecialExcludedPn) {
-        return null;
-      }
+      if (isSpecialGpuModel && isSpecialExcludedPn) return null;
 
       if (isSpecialGpuModel) {
         return {
@@ -655,7 +561,6 @@
       if (!globalJsonData || globalJsonData.length === 0) return;
 
       let matchedCount = 0;
-      let missingFamilyCount = 0;
 
       globalJsonData.forEach(row => {
         const currentModel = row[modelNameKey] || "";
@@ -670,19 +575,13 @@
           row["__ownerObj"] = null;
           row["__isMatched"] = false;
         }
-
-        if (!row.__hasPartFamily) {
-          missingFamilyCount++;
-        }
       });
 
       const dateNotice = extractedFileDateFormatted ? ` | 📅 識別檔案日期：${extractedFileDateFormatted}` : "";
       const filterNotice = removedInvalidCount > 0 ? ` (已排除 ${removedInvalidCount} 筆無效/空白/僅N之 Model Name)` : "";
       document.getElementById('matchStats').innerText = `共處理 ${globalJsonData.length} 筆${filterNotice}，成功匹配 ${matchedCount} 筆 (${Math.round((matchedCount/globalJsonData.length)*100)}%)${dateNotice}`;
-      document.getElementById('missingFamilyStats').innerText = `共發現 ${missingFamilyCount} 筆物料無 Part Family`;
 
       renderTable();
-      renderMissingFamilyTable();
     }
 
     function getProcessedData() {
@@ -702,7 +601,6 @@
           const formulaModel = String(row[modelNameKey] || "");
           const pn = String(row["Product P/N"] || row["PN"] || "");
           const mfg = String(row["Manufacturer"] || "");
-          const family = String(row[partFamilyKey] || "");
           const ownerEn = String(row[ownerKey] || "");
           const ownerCn = row.__ownerObj ? row.__ownerObj.nameCn : "";
 
@@ -711,7 +609,6 @@
             formulaModel.toLowerCase().includes(searchQuery) ||
             pn.toLowerCase().includes(searchQuery) ||
             mfg.toLowerCase().includes(searchQuery) ||
-            family.toLowerCase().includes(searchQuery) ||
             ownerEn.toLowerCase().includes(searchQuery) ||
             ownerCn.toLowerCase().includes(searchQuery);
 
@@ -719,9 +616,7 @@
             (normQuery && normalizeStr(formulaModel).includes(normQuery)) ||
             (normQuery && normalizeStr(pn).includes(normQuery));
 
-          if (!matchNormal && !matchNormalized) {
-            return false;
-          }
+          if (!matchNormal && !matchNormalized) return false;
         }
         return true;
       });
@@ -741,14 +636,14 @@
     function renderTable() {
       const tbody = document.getElementById('tableBody');
       if (!globalJsonData || globalJsonData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td></tr>`;
         return;
       }
 
       const displayList = getProcessedData();
 
       if (displayList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">查無符合篩選條件的資料</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="p-8 text-center text-slate-400">查無符合篩選條件的資料</td></tr>`;
         return;
       }
 
@@ -758,9 +653,6 @@
         const formulaModel = row[modelNameKey] || "";
         const isMatched = row.__isMatched;
         const ownerDisplay = isMatched ? formatOwnerForDashboard(row.__ownerObj) : "";
-        const familyDisplay = row.__hasPartFamily 
-          ? `<span class="text-slate-600">${row.__rawPartFamily}</span>` 
-          : `<span class="bg-amber-100 text-amber-800 text-[10px] px-1.5 py-0.5 rounded font-mono font-medium">缺少 (待生成)</span>`;
 
         const tr = document.createElement('tr');
         tr.className = isMatched ? "hover:bg-slate-50 transition" : "bg-rose-50/40 hover:bg-rose-50 transition";
@@ -769,7 +661,6 @@
           <td class="p-3 font-semibold text-slate-900">${formulaModel || "-"}</td>
           <td class="p-3 text-slate-500">${row["Product P/N"] || row["PN"] || "-"}</td>
           <td class="p-3 text-slate-500">${row["Manufacturer"] || "-"}</td>
-          <td class="p-3">${familyDisplay}</td>
           <td class="p-3 font-semibold ${isMatched ? 'text-emerald-700' : 'text-rose-500 italic'}">${ownerDisplay || "未匹配"}</td>
           <td class="p-3">
             ${isMatched 
@@ -781,69 +672,14 @@
       });
     }
 
-    function renderMissingFamilyTable() {
-      const tbody = document.getElementById('missingFamilyTableBody');
-      if (!globalJsonData || globalJsonData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以統整未填寫 Part Family 之項目</td></tr>`;
-        return;
-      }
-
-      const searchQuery = (document.getElementById('missingFamilySearch').value || "").trim().toLowerCase();
-      
-      let missingList = globalJsonData.filter(row => !row.__hasPartFamily);
-
-      if (searchQuery) {
-        missingList = missingList.filter(row => {
-          const m = String(row[modelNameKey] || "").toLowerCase();
-          const pn = String(row["Product P/N"] || row["PN"] || "").toLowerCase();
-          const vpn = String(row.__vendorPn || "").toLowerCase();
-          const mfg = String(row.__vendorName || "").toLowerCase();
-          const gen = String(row.__generatedFamily || "").toLowerCase();
-          return m.includes(searchQuery) || pn.includes(searchQuery) || vpn.includes(searchQuery) || mfg.includes(searchQuery) || gen.includes(searchQuery);
-        });
-      }
-
-      if (missingList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-emerald-600 font-medium"><i class="fa-solid fa-circle-check"></i> 太棒了！此檔案中所有資料皆具備 Part Family，無需補登。</td></tr>`;
-        return;
-      }
-
-      tbody.innerHTML = "";
-      missingList.forEach(row => {
-        const ownerDisplay = row.__isMatched ? formatOwnerForDashboard(row.__ownerObj) : '<span class="text-rose-400 italic">未匹配</span>';
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-amber-50/50 transition";
-        tr.innerHTML = `
-          <td class="p-3 font-semibold text-slate-800">${row[modelNameKey] || "-"}</td>
-          <td class="p-3 text-slate-600 font-mono">${row["Product P/N"] || row["PN"] || "-"}</td>
-          <td class="p-3 text-slate-600 font-mono">${row.__vendorPn || "-"}</td>
-          <td class="p-3 text-slate-600">${row.__vendorName || "-"}</td>
-          <td class="p-3"><span class="bg-rose-100 text-rose-700 text-[10px] px-2 py-0.5 rounded-full font-medium">無 (空白)</span></td>
-          <td class="p-3 font-mono font-semibold text-amber-700 bg-amber-50/80 rounded">${row.__generatedFamily}</td>
-          <td class="p-3 font-medium text-slate-700">${ownerDisplay}</td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
     function applyHeaderStyle(worksheet) {
       if (!worksheet || !worksheet['!ref']) return;
       const range = XLSX.utils.decode_range(worksheet['!ref']);
       
       const headerStyle = {
-        fill: {
-          fgColor: { rgb: "000000" }
-        },
-        font: {
-          name: "Calibri",
-          sz: 11,
-          bold: true,
-          color: { rgb: "FFFFFF" }
-        },
-        alignment: {
-          vertical: "center",
-          horizontal: "center"
-        }
+        fill: { fgColor: { rgb: "000000" } },
+        font: { name: "Calibri", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+        alignment: { vertical: "center", horizontal: "center" }
       };
 
       for (let C = range.s.c; C <= range.e.c; ++C) {
@@ -853,25 +689,17 @@
       }
     }
 
-    function cleanDataForExport(dataList, overridePartFamily = false) {
+    function cleanDataForExport(dataList) {
       return dataList.map(item => {
         const clean = {};
         if (originalHeaders && originalHeaders.length > 0) {
           originalHeaders.forEach(header => {
-            if (overridePartFamily && header === partFamilyKey && !item.__hasPartFamily) {
-              clean[header] = item.__generatedFamily;
-            } else {
-              clean[header] = item[header] !== undefined ? item[header] : "";
-            }
+            clean[header] = item[header] !== undefined ? item[header] : "";
           });
         } else {
           Object.keys(item).forEach(key => {
             if (!key.startsWith("__")) {
-              if (overridePartFamily && key === partFamilyKey && !item.__hasPartFamily) {
-                clean[key] = item.__generatedFamily;
-              } else {
-                clean[key] = item[key];
-              }
+              clean[key] = item[key];
             }
           });
         }
@@ -940,27 +768,6 @@
       const newWb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(newWb, newWorksheet, "FilteredResult");
 
-      XLSX.writeFile(newWb, outName);
-    }
-
-    function downloadMissingFamilyExcel() {
-      if (!globalWorkbook || !globalJsonData || globalJsonData.length === 0) return;
-
-      const missingList = globalJsonData.filter(row => !row.__hasPartFamily);
-      if (missingList.length === 0) {
-        alert("太棒了！此檔案中所有料號皆已有 Part Family，無需下載缺漏清單。");
-        return;
-      }
-
-      const exportList = cleanDataForExport(missingList, true);
-      const newWorksheet = XLSX.utils.json_to_sheet(exportList, { header: originalHeaders });
-      
-      applyHeaderStyle(newWorksheet);
-
-      const newWb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(newWb, newWorksheet, "MissingPartFamily");
-
-      const outName = `Agile_Missing_PartFamily_${getDateString()}.xlsx`;
       XLSX.writeFile(newWb, outName);
     }
 
