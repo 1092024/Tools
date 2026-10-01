@@ -23,7 +23,7 @@
         <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
           <i class="fa-solid fa-file-excel text-emerald-600"></i> Model Name 比對與 Owner 自動填入系統
         </h1>
-        <p class="text-sm text-slate-500 mt-1">自動排除空白及僅有 "N" 的 Model Name 列、公式覆寫 Model Name、比對負責 Owner。</p>
+        <p class="text-sm text-slate-500 mt-1">自動排除空白及僅有 "N" 的 Model Name 列、公式覆寫 Model Name、比對負責 Owner（支援自選存檔資料夾）。</p>
       </div>
       <button onclick="toggleReferenceModal()" class="px-4 py-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition font-medium flex items-center gap-2">
         <i class="fa-solid fa-database"></i> 檢視對照資料庫 (<span id="refCount">0</span> 筆)
@@ -386,6 +386,30 @@
       return `${year}${month}${day}`;
     }
 
+    // 通用支援「選擇存檔路徑 (showSaveFilePicker)」函式
+    async function saveWorkbookWithPicker(wb, defaultFileName) {
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: defaultFileName,
+            types: [{
+              description: 'Excel 試算表 (*.xlsx)',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const u8 = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(u8);
+          await writable.close();
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return; // 使用者點選取消時不報錯
+          console.warn("使用系統檔案選擇器失敗，改用預設下載方式", err);
+        }
+      }
+      XLSX.writeFile(wb, defaultFileName);
+    }
+
     document.getElementById('excelFile').addEventListener('change', function(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -707,7 +731,7 @@
       });
     }
 
-    function downloadAllExcel() {
+    async function downloadAllExcel() {
       if (!globalWorkbook || !globalJsonData || globalJsonData.length === 0) return;
 
       const sortOrder = document.getElementById('sortOrder').value;
@@ -730,10 +754,10 @@
       XLSX.utils.book_append_sheet(newWb, newWorksheet, "Sheet1");
 
       const outName = `Agile_ProjectOwner_All_${getDateString()}.xlsx`;
-      XLSX.writeFile(newWb, outName);
+      await saveWorkbookWithPicker(newWb, outName);
     }
 
-    function downloadFilteredExcel() {
+    async function downloadFilteredExcel() {
       if (!globalWorkbook || !globalJsonData || globalJsonData.length === 0) return;
 
       const filteredList = getProcessedData();
@@ -768,7 +792,7 @@
       const newWb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(newWb, newWorksheet, "FilteredResult");
 
-      XLSX.writeFile(newWb, outName);
+      await saveWorkbookWithPicker(newWb, outName);
     }
 
     function toggleReferenceModal() {
