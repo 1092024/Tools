@@ -3,7 +3,7 @@
 <br>
 <a href="https://1092024.github.io/Tools/RD&weekly_compare">找專案RD</a>
 <br>
-<a href="https://1092024.github.io/Tools/Owner_RD_Mix.html">找專案RD</a>
+<a href="https://1092024.github.io/Tools/Owner_RD_Mix.html">兩種功能合併</a>
 
 <h2>History</h2>
 <h4>2026/09/24</h4>
