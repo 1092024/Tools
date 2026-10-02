@@ -1,0 +1,1770 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agile 專案管理整合平台 (Owner 比對 / 每週比對 / RD 追蹤 / Part Family)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- 支援樣式 (黑底白字標題) 的 Excel 處理庫 -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+  <!-- FontAwesome 圖示 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body { background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft JhengHei", sans-serif; }
+    .table-wrap { overflow: auto; border: 1px solid #e2e8f0; border-radius: 0.5rem; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; background: #f8fafc; z-index: 10; }
+    tr:hover td { background: #f9fafb; }
+    .pn-container { max-height: 100px; overflow-y: auto; border: 1px solid #e2e8f0; background: #f8fafc; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 12px; }
+  </style>
+</head>
+<body class="p-4 md:p-8 text-slate-800">
+
+  <div class="max-w-7xl mx-auto space-y-6">
+    <!-- Header -->
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-layer-group text-blue-600"></i> Agile 專案管理整合作業平台
+        </h1>
+        <p class="text-sm text-slate-500 mt-1">整合 Model Name 轉化、Owner 自動填入、兩週未結案比對、RD 發信追蹤與待補 Part Family 生成。</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button onclick="toggleReferenceModal()" class="px-3.5 py-2 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition font-medium flex items-center gap-2">
+          <i class="fa-solid fa-users"></i> Owner 對照庫 (<span id="refCount">0</span>)
+        </button>
+        <button onclick="openRdModal()" class="px-3.5 py-2 text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition font-medium flex items-center gap-2">
+          <i class="fa-solid fa-envelope-open-text"></i> RD & CC 對照庫
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="flex border-b border-slate-200 bg-white px-4 rounded-xl shadow-sm gap-2">
+      <button id="tabBtn1" onclick="switchTab('step1')" class="py-3 px-4 font-semibold text-sm border-b-2 border-blue-600 text-blue-600 flex items-center gap-2">
+        <i class="fa-solid fa-user-check"></i> 模組 1：Owner 比對與格式清理
+      </button>
+      <button id="tabBtn2" onclick="switchTab('step2')" class="py-3 px-4 font-semibold text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2">
+        <i class="fa-solid fa-code-compare"></i> 模組 2：每週未結案比對 & RD 追蹤儀表板
+      </button>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 模組 1: Model Name 到 Owner 比對系統       -->
+    <!-- ========================================== -->
+    <div id="sectionStep1" class="space-y-6">
+      <div class="grid md:grid-cols-3 gap-6">
+        <!-- Drag & Drop Area -->
+        <div class="md:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <label for="excelFile" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/30 transition rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer text-center block h-full">
+            <i class="fa-solid fa-cloud-arrow-up text-4xl text-emerald-600 mb-3"></i>
+            <span class="font-semibold text-slate-700" id="singleUploadText">點擊上傳或拖曳單週原始 Excel 檔案至此 (.xlsx / .xls)</span>
+            <span class="text-xs text-slate-400 mt-1">系統將自動排除 Model Name 空白/N、自動排除 HH P/N 重複項目，並切分比對 Owner</span>
+            <input type="file" id="excelFile" accept=".xlsx, .xls" class="hidden">
+          </label>
+        </div>
+
+        <!-- Settings Panel -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between space-y-4">
+          <div>
+            <h3 class="font-bold text-slate-800 mb-2 flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-sliders text-indigo-600"></i> Dashboard 預覽格式
+            </h3>
+            <p class="text-xs text-slate-400 mb-3">僅變更網頁顯示；Excel 下載一律統一為純英文名</p>
+            <div class="space-y-2">
+              <label class="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="radio" name="previewFormat" value="en" class="text-emerald-600 focus:ring-emerald-500">
+                <span>僅英文名</span>
+              </label>
+              <label class="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="radio" name="previewFormat" value="cn" class="text-emerald-600 focus:ring-emerald-500">
+                <span>僅中文名</span>
+              </label>
+              <label class="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="radio" name="previewFormat" value="full" checked class="text-emerald-600 focus:ring-emerald-500">
+                <span>英文 + 中文</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="space-y-2 pt-2 border-t border-slate-100">
+            <button id="downloadAllOwnerBtn" onclick="downloadAllExcel()" disabled class="w-full py-2 px-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs">
+              <i class="fa-solid fa-download"></i> 下載整理後全部 Excel (黑底白字標題)
+            </button>
+            <button id="downloadFilteredOwnerBtn" onclick="downloadFilteredExcel()" disabled class="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition shadow-sm flex items-center justify-center gap-2 text-xs">
+              <i class="fa-solid fa-filter"></i> 下載篩選結果 Excel (黑底白字標題)
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 比對結果預覽主表 -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
+          <div class="flex items-center gap-2">
+            <h3 class="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <i class="fa-solid fa-table"></i> Model & Owner 比對結果預覽
+            </h3>
+            <span id="matchStats" class="text-xs bg-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-medium">尚未上傳檔案</span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <div class="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 shadow-sm">
+              <i class="fa-solid fa-filter text-slate-400"></i>
+              <label for="statusFilter" class="text-slate-500 font-medium">狀態：</label>
+              <select id="statusFilter" onchange="renderOwnerTable()" class="bg-transparent focus:outline-none text-slate-700 cursor-pointer">
+                <option value="all">全部顯示</option>
+                <option value="unmatched">僅顯示未匹配</option>
+                <option value="matched">僅顯示已匹配</option>
+              </select>
+            </div>
+
+            <div class="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 shadow-sm">
+              <i class="fa-solid fa-arrow-down-short-wide text-slate-400"></i>
+              <label for="sortOrder" class="text-slate-500 font-medium">排序：</label>
+              <select id="sortOrder" onchange="renderOwnerTable()" class="bg-transparent focus:outline-none text-slate-700 font-semibold text-emerald-700 cursor-pointer">
+                <option value="unmatchedFirst" selected>❗ 未匹配置頂</option>
+                <option value="matchedFirst">已匹配置頂</option>
+                <option value="original">原始順序</option>
+              </select>
+            </div>
+
+            <div class="relative">
+              <input type="text" id="tableSearch" oninput="renderOwnerTable()" placeholder="快速搜尋表格..." class="pl-7 pr-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-xs w-36 sm:w-48">
+              <i class="fa-solid fa-magnifying-glass text-slate-400 absolute left-2.5 top-2.5"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto max-h-[460px] p-2">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead class="bg-slate-100 text-slate-600 font-semibold uppercase sticky top-0 border-b">
+              <tr>
+                <th class="p-3">原始 Model Name</th>
+                <th class="p-3">公式後 Model Name</th>
+                <th class="p-3">HH P/N</th>
+                <th class="p-3">Product P/N</th>
+                <th class="p-3">Manufacturer</th>
+                <th class="p-3">Owner (自動比對結果)</th>
+                <th class="p-3">比對狀態</th>
+              </tr>
+            </thead>
+            <tbody id="ownerTableBody" class="divide-y divide-slate-100">
+              <tr>
+                <td colspan="7" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 模組 2: 每週比對 & RD 追蹤與待補 Part Family -->
+    <!-- ========================================== -->
+    <div id="sectionStep2" class="space-y-6 hidden">
+      <!-- 上傳與比對設定 -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+        <h2 class="text-base font-bold text-slate-900 border-b-2 border-blue-500 pb-2 mb-4 flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up text-blue-600"></i> 上傳兩週檔案與 RD 對照比對
+        </h2>
+        <div class="grid md:grid-cols-3 gap-4">
+          <div class="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50">
+            <h3 class="text-sm font-semibold text-slate-700 mb-2">① 上週檔案</h3>
+            <input id="lastFile" type="file" accept=".xlsx,.xls,.csv" class="text-xs w-full">
+            <div id="lastName" class="text-xs text-slate-500 mt-2 truncate">尚未選擇檔案</div>
+          </div>
+          <div class="border-2 border-dashed border-slate-300 rounded-xl p-4 bg-slate-50">
+            <h3 class="text-sm font-semibold text-slate-700 mb-2">② 這週檔案 (支援檔名日期)</h3>
+            <input id="thisFile" type="file" accept=".xlsx,.xls,.csv" class="text-xs w-full">
+            <div id="thisName" class="text-xs text-slate-500 mt-2 truncate">尚未選擇檔案</div>
+          </div>
+          <div class="border-2 border-dashed border-blue-200 rounded-xl p-4 bg-blue-50/50">
+            <h3 class="text-sm font-semibold text-blue-700 mb-2">③ RD 對照表 (選填)</h3>
+            <input id="rdMappingFile" type="file" accept=".xlsx,.xls,.csv" class="text-xs w-full">
+            <div id="rdMappingName" class="text-xs text-slate-500 mt-2 truncate">使用系統預設對照庫</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3 mt-4">
+          <button id="compareBtn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl text-xs transition flex items-center gap-2">
+            <i class="fa-solid fa-play"></i> 開始比對並更新 Dashboard
+          </button>
+          <span id="compareStatus" class="text-xs font-semibold text-blue-600"></span>
+        </div>
+
+        <!-- 數據指標統計 -->
+        <div id="stats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 hidden">
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <div class="text-xs text-emerald-700 font-medium">上週已解決 (結案)</div>
+            <div class="text-xl font-bold text-emerald-800 mt-1" id="solvedCount">0</div>
+          </div>
+          <div class="p-3 bg-orange-50 border border-orange-200 rounded-xl">
+            <div class="text-xs text-orange-700 font-medium">上週仍存在 (未結案)</div>
+            <div class="text-xl font-bold text-orange-800 mt-1" id="openCount">0</div>
+          </div>
+          <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <div class="text-xs text-blue-700 font-medium">本週新增 (未結案)</div>
+            <div class="text-xl font-bold text-blue-800 mt-1" id="newCount">0</div>
+          </div>
+          <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <div class="text-xs text-amber-700 font-medium">未結案待補 Part Family</div>
+            <div class="text-xl font-bold text-amber-800 mt-1" id="missingFamilyCount">0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RD Mapping Dashboard -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hidden" id="dashboardCard">
+        <div class="flex justify-between items-center mb-3">
+          <div>
+            <h2 class="text-base font-bold text-slate-900 border-none pb-0 mb-1 flex items-center gap-2">
+              <i class="fa-solid fa-bullhorn text-indigo-600"></i> 待追蹤專案與 RD Mapping Dashboard
+            </h2>
+            <div class="text-xs text-slate-500">自動將尚未結案（本週新增 + 上週仍存在）的項目 mapping 至負責 RD</div>
+          </div>
+        </div>
+        
+        <div class="table-wrap max-h-[380px]">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 18%;">Excel Model Name</th>
+                <th style="width: 18%;">比對到專案</th>
+                <th style="width: 14%;">RD 姓名</th>
+                <th style="width: 22%;">RD Email</th>
+                <th style="width: 18%;">待處理 HH P/N (筆數)</th>
+                <th style="width: 10%;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="dashboardBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 信件預覽與發送 -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hidden" id="emailCard">
+        <h2 class="text-base font-bold text-slate-900 border-b-2 border-blue-500 pb-2 mb-3 flex items-center gap-2">
+          <i class="fa-solid fa-envelope text-blue-600"></i> 信件內容預覽與發送
+        </h2>
+        <div class="space-y-2 text-xs">
+          <div><span class="font-semibold text-slate-600">收件人 (To)：</span> <span id="mailTo" class="font-mono"></span></div>
+          <div><span class="font-semibold text-slate-600">固定副本 (CC)：</span> <span id="mailCc" class="font-mono text-slate-500"></span></div>
+          <div><span class="font-semibold text-slate-600">信件主旨：</span> <span id="mailSubject" class="font-semibold text-slate-800"></span></div>
+        </div>
+        <textarea id="mailBody" class="w-full h-40 mt-3 p-3 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"></textarea>
+        
+        <div class="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+          <h4 class="text-xs font-bold text-slate-700">👉 請選擇發送 / 處理方式：</h4>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="openOutlookWebNotice()" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-globe"></i> 開啟 Outlook 網頁版
+            </button>
+            <button onclick="copyEmailContent()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-copy"></i> 一鍵複製內容 (貼入 Outlook)
+            </button>
+            <button onclick="downloadEml()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-file-arrow-down"></i> 下載 .eml 草稿 (含CC)
+            </button>
+            <button onclick="sendViaMailto()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-paper-plane"></i> 系統預設客戶端 (mailto)
+            </button>
+          </div>
+          <div id="copyNotice" class="text-xs text-emerald-600 font-semibold hidden">
+            ✅ 已成功複製「收件人、固定 CC、主旨、內文」！請直接切換到 Outlook 貼上。
+          </div>
+        </div>
+      </div>
+
+      <!-- 待補 Part Family 統整專區 -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border-2 border-amber-300 hidden" id="missingFamilyCard">
+        <div class="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <div>
+            <h2 class="text-base font-bold text-amber-900 border-none pb-0 mb-1 flex items-center gap-2">
+              <i class="fa-solid fa-boxes-stacked text-amber-600"></i> 待補 Part Family 統整專區 (未結案且無 Part Family 物料)
+            </h2>
+            <div class="text-xs text-slate-500">已自動排除已結案料號，推薦命名格式：供應商料號_供應商</div>
+          </div>
+          <button onclick="downloadMissingFamilyExcel()" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-medium transition shadow-sm flex items-center gap-1.5">
+            <i class="fa-solid fa-file-excel"></i> 下載待補 Part Family 清單 (.xlsx)
+          </button>
+        </div>
+
+        <div class="mb-3">
+          <input type="text" id="missingFamilySearch" placeholder="搜尋 Model, HH P/N, 供應商料號, 廠商, Owner..." oninput="renderMissingFamilyTable()" class="w-full text-xs px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500">
+        </div>
+
+        <div class="table-wrap max-h-[350px]">
+          <table>
+            <thead class="bg-amber-50 text-amber-900 font-semibold">
+              <tr>
+                <th>Model Name</th>
+                <th>HH P/N</th>
+                <th>供應商料號 (Mfr P/N)</th>
+                <th>供應商 (Manufacturer)</th>
+                <th>資料狀態</th>
+                <th>建議生成之 Part Family</th>
+                <th>負責 Owner</th>
+              </tr>
+            </thead>
+            <tbody id="missingFamilyBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 比對原始明細表 -->
+      <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hidden" id="searchCard">
+        <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+          <div>
+            <h2 class="text-base font-bold text-slate-900 border-none pb-0 mb-1 flex items-center gap-2">
+              <i class="fa-solid fa-list-check text-slate-700"></i> 比對原始明細表
+            </h2>
+            <div class="text-xs text-slate-500" id="resultInfo">尚未搜尋</div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button id="downloadPendingBtn" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-inbox"></i> 下載未結案資料 (扣除已解決)
+            </button>
+            <button id="downloadAllBtn" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-download"></i> 下載全部比對 (.xlsx)
+            </button>
+            <button id="downloadFilteredBtn" class="px-3 py-1.5 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5">
+              <i class="fa-solid fa-filter"></i> 下載篩選結果 (.xlsx)
+            </button>
+          </div>
+        </div>
+
+        <!-- 篩選列 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 items-end text-xs">
+          <div>
+            <label class="block font-semibold text-slate-600 mb-1">Model Name</label>
+            <select id="modelSelect" class="w-full p-1.5 border border-slate-300 rounded bg-white"><option value="">全部 Model Name</option></select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-600 mb-1">Owner</label>
+            <select id="ownerSelect" class="w-full p-1.5 border border-slate-300 rounded bg-white"><option value="">全部 Owner</option></select>
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-600 mb-1">HH P/N</label>
+            <input id="hhSearch" type="text" placeholder="關鍵字搜尋" class="w-full p-1.5 border border-slate-300 rounded bg-white">
+          </div>
+          <div>
+            <label class="block font-semibold text-slate-600 mb-1">資料類型</label>
+            <select id="typeSelect" class="w-full p-1.5 border border-slate-300 rounded bg-white">
+              <option value="">全部類型</option>
+              <option value="上週已解決">上週已解決</option>
+              <option value="上週仍存在">上週仍存在</option>
+              <option value="本週新增">本週新增</option>
+            </select>
+          </div>
+          <div>
+            <button id="clearBtn" class="w-full py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded font-medium transition">清除篩選條件</button>
+          </div>
+        </div>
+
+        <div class="mt-4 table-wrap max-h-[420px]" id="tableWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Part Family 缺失與自動補齊提醒彈窗 -->
+  <div id="missingNoticeModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6 space-y-4">
+      <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+        <h3 class="font-bold text-amber-800 text-base flex items-center gap-2">
+          <i class="fa-solid fa-triangle-exclamation text-amber-500"></i> Part Family 自動補齊提醒
+        </h3>
+        <button onclick="closeMissingNoticeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        專案 <strong id="noticeProjectName" class="text-slate-900 font-semibold"></strong> 產生的信件中，以下 <strong id="noticeMissingCount" class="text-amber-700 font-bold">0</strong> 個 HH P/N 原始資料中<strong>無 Part Family</strong>，系統已依據「<strong>供應商料號_供應商</strong>」為您自動補上至信件清單中：
+      </p>
+      
+      <div class="table-wrap max-h-48 border border-amber-200 rounded-lg">
+        <table class="w-full text-xs">
+          <thead class="bg-amber-50 text-amber-900 sticky top-0">
+            <tr>
+              <th class="p-2">HH P/N</th>
+              <th class="p-2">自動補齊之 Part Family</th>
+            </tr>
+          </thead>
+          <tbody id="noticeMissingTableBody" class="divide-y divide-amber-100 bg-white"></tbody>
+        </table>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button onclick="closeMissingNoticeModal()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold shadow-sm transition">
+          我知道了
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 1: 下載未結案選項彈窗 -->
+  <div id="downloadModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-slate-800 text-base">下載未結案資料</h3>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        請選擇匯出 Excel 時，是否保留系統標註之「<strong>資料類型</strong>」欄位（本週新增 / 上週仍存在）？
+      </p>
+      <div class="flex justify-end gap-2 pt-2">
+        <button onclick="executePendingDownload(false)" class="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium">不要保留</button>
+        <button onclick="executePendingDownload(true)" class="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium">確定保留</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Owner 對照資料庫 -->
+  <div id="refModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+        <h3 class="font-bold text-slate-800 text-sm">Owner 對照資料庫 (<span id="modalRefCount">0</span> 筆)</h3>
+        <button onclick="toggleReferenceModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="p-3 border-b bg-slate-50/50">
+        <input type="text" id="searchInput" oninput="renderRefTable()" placeholder="搜尋 Project、Customer 或 Owner..." class="px-3 py-1.5 text-xs border rounded-lg w-full focus:outline-none focus:ring-2 focus:ring-emerald-500">
+      </div>
+      <div class="overflow-y-auto p-4 flex-1">
+        <table class="w-full text-xs text-left">
+          <thead class="bg-slate-100 text-slate-600 font-semibold sticky top-0">
+            <tr>
+              <th class="p-2">中文名</th>
+              <th class="p-2">英文名</th>
+              <th class="p-2">Customer</th>
+              <th class="p-2">Project</th>
+            </tr>
+          </thead>
+          <tbody id="refTableBody" class="divide-y divide-slate-100"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 3: RD / Project 對照與 CC 名單資料庫 -->
+  <div id="rdModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] flex flex-col overflow-hidden">
+      <div class="p-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+        <h3 class="font-bold text-slate-800 text-sm">RD / Project 對照與 CC 名單資料庫</h3>
+        <button onclick="closeRdModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      
+      <div class="p-4 space-y-4 overflow-y-auto flex-1 text-xs">
+        <div>
+          <h4 class="font-bold text-blue-700 mb-2 flex items-center gap-1.5">
+            <i class="fa-solid fa-thumbtack"></i> 系統固定 CC 副本名單（每封信自動帶入）
+          </h4>
+          <div class="table-wrap max-h-36">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 25%;">角色</th>
+                  <th style="width: 35%;">姓名</th>
+                  <th style="width: 40%;">Email</th>
+                </tr>
+              </thead>
+              <tbody id="fixedCcBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="flex justify-between items-center mb-2">
+            <h4 class="font-bold text-slate-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-building"></i> 專案與負責 RD 對照清單
+            </h4>
+            <button onclick="downloadRdTemplate()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs transition">
+              <i class="fa-solid fa-download"></i> 下載 RD 對照表範本
+            </button>
+          </div>
+          <input type="text" id="rdSearchInput" placeholder="搜尋專案、RD 姓名或 Email..." oninput="filterRdTable()" class="w-full px-3 py-1.5 border border-slate-300 rounded-lg mb-2">
+          <div class="table-wrap max-h-56">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 30%;">Project (Model)</th>
+                  <th style="width: 15%;">角色</th>
+                  <th style="width: 25%;">RD 姓名</th>
+                  <th style="width: 30%;">RD Email</th>
+                </tr>
+              </thead>
+              <tbody id="rdDbModalBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 4: 網頁版 Outlook CC 提示彈窗 -->
+  <div id="webMailModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 class="font-bold text-sky-700 text-sm flex items-center gap-1.5">
+          <i class="fa-solid fa-globe"></i> Outlook 網頁版發信提醒
+        </h3>
+        <button onclick="closeOutlookWebNotice()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-xs text-slate-600 leading-relaxed">
+        因微軟 Outlook 網頁版連結規範限制，系統<strong>無法透過網址直接帶入 CC 副本</strong>。請複製下方 CC 名單，在開啟的網頁版郵件副本欄位直接貼上：
+      </p>
+      <div class="bg-slate-100 border border-slate-200 rounded-lg p-3 font-mono text-[11px] text-slate-700 break-all select-all leading-normal" id="modalCcDisplay"></div>
+      <div id="modalCopyNotice" class="text-xs text-emerald-600 font-bold hidden">✅ CC 名單已複製到剪貼簿！</div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button onclick="copyModalCc()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium">複製 CC 名單</button>
+        <button onclick="proceedToWebOutlook()" class="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-medium">前往 Outlook 網頁版 ↗</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Tab 切換
+    function switchTab(tab) {
+      const s1 = document.getElementById('sectionStep1');
+      const s2 = document.getElementById('sectionStep2');
+      const b1 = document.getElementById('tabBtn1');
+      const b2 = document.getElementById('tabBtn2');
+
+      if (tab === 'step1') {
+        s1.classList.remove('hidden');
+        s2.classList.add('hidden');
+        b1.className = "py-3 px-4 font-semibold text-sm border-b-2 border-blue-600 text-blue-600 flex items-center gap-2";
+        b2.className = "py-3 px-4 font-semibold text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2";
+      } else {
+        s1.classList.add('hidden');
+        s2.classList.remove('hidden');
+        b2.className = "py-3 px-4 font-semibold text-sm border-b-2 border-blue-600 text-blue-600 flex items-center gap-2";
+        b1.className = "py-3 px-4 font-semibold text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center gap-2";
+      }
+    }
+
+    // ==========================================
+    // 通用共用工具函式 (黑底白字標題 / 路徑選擇)
+    // ==========================================
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    }
+
+    function normalizeStr(str) {
+      if (!str) return "";
+      return String(str).toLowerCase().replace(/[\s\-_/]/g, "");
+    }
+
+    function normalize(v) {
+      return String(v ?? "").trim();
+    }
+
+    function unique(arr) {
+      return [...new Set(arr)];
+    }
+
+    function extractDateFromFileName(filename) {
+      if (!filename) return { raw: "", formatted: "" };
+      const match = filename.match(/(?:_|\b)(\d{4})[-_](\d{2})[-_](\d{2})(?:[-_]|\b)/);
+      if (match) {
+        return {
+          raw: `${match[1]}${match[2]}${match[3]}`,
+          formatted: `${match[1]}/${match[2]}/${match[3]}`
+        };
+      }
+      return { raw: "", formatted: "" };
+    }
+
+    function applyHeaderStyle(worksheet) {
+      if (!worksheet || !worksheet['!ref']) return;
+      const range = XLSX.utils.decode_range(worksheet['!ref']);
+      const headerStyle = {
+        fill: { fgColor: { rgb: "000000" } },
+        font: { name: "Microsoft JhengHei", sz: 11, bold: true, color: { rgb: "FFFFFF" } },
+        alignment: { vertical: "center", horizontal: "center" }
+      };
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellAddress = XLSX.utils.encode_cell({ r: 0, c: C });
+        if (!worksheet[cellAddress]) continue;
+        worksheet[cellAddress].s = headerStyle;
+      }
+    }
+
+    async function saveWorkbookWithPicker(wb, defaultFileName) {
+      if (window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: defaultFileName,
+            types: [{
+              description: 'Excel 試算表 (*.xlsx)',
+              accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+            }]
+          });
+          const writable = await handle.createWritable();
+          const u8 = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(u8);
+          await writable.close();
+          return;
+        } catch (err) {
+          if (err.name === 'AbortError') return;
+          console.warn("使用檔案選擇器失敗，改用預設下載方式", err);
+        }
+      }
+      XLSX.writeFile(wb, defaultFileName);
+    }
+
+    // ==========================================
+    // 模組 1 專屬邏輯 (Owner 比對)
+    // ==========================================
+    const referenceData = [
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "SpaceX", "project": "SpaceX L11"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Katmai_Carlsbad"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Retread"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Tahiti"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Apollo"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "NetApp", "project": "Aurora"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "GB200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "GB300_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "VR200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Nvidia", "project": "Vera Rubin Ultra_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "Softbank", "project": "VR200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "SpaceX", "project": "VR200_PCBA"},
+      {"nameCn": "周玉惠", "nameEn": "Chloe Chou", "vendor": "SpaceX", "project": "NVL72_VRU"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Oracle", "project": "B300 AC"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Oracle", "project": "E6_IS"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Oracle", "project": "G6-8HD"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Graphcore", "project": "POD32"},
+      {"nameCn": "林亞庭", "nameEn": "Mary Lin", "vendor": "Graphcore", "project": "IZANAGI"},
+      {"nameCn": "林佩庭", "nameEn": "Lynn Lin", "vendor": "Nvidia", "project": "PBR BOM support"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Dagny(MCV3)"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Hanuman81/82"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Mimino"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "PDB MAX"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "PDB_MAX"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Hopper88"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Monza 76/88"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Monza76"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Monza88"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "UPDB-3P6K(RESPIN)"},
+      {"nameCn": "邱筠庭", "nameEn": "Ting Chiu", "vendor": "AWS", "project": "Graviton 6 / LYNX"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Nvidia", "project": "VR NVL144(All System)"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Nvidia", "project": "Kyber Ultra(All System)"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Nvidia", "project": "Language Processing Unit (LPU)"},
+      {"nameCn": "胡乃蓉", "nameEn": "Nana Hu", "vendor": "Softbank", "project": "VR200"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "White box", "project": "Yoxi_EIA_LC"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "White box", "project": "Newell"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "White box", "project": "Irene"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Qualcomm", "project": "Wall-E"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Qualcomm", "project": "Gloria Edge"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Ambrose63(Fairooz)"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Sedona"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Cub Scout"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Tiger(Graviton 5)"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "AWS", "project": "Tiger49/56"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Google", "project": "VR200_PCBA"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Google", "project": "Tiger11_12"},
+      {"nameCn": "徐晟凱", "nameEn": "Kevin Hsu", "vendor": "Google", "project": "Tiger49_54"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Katana"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Katana_Redesign"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Durango"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Cascade_new"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Tahiti respin-Black Pearl (Gizo)"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Apollo Redesign"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Alder"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Alder SAS Dongle Respin"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "Turing"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "HGX4"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G3-8C"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G4-8C"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G4-8C- MI300X(AMD SKU)"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "Oracle Oberon GB200"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G5-8C"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Mink"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Moonlight"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Stoat"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Fisher"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Antero"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "PERLIS"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "G5-8HD B200 LC"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "NR1S"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Spotted cow"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "NetApp", "project": "Spotted_cow"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "Oracle", "project": "Spectrum 6"},
+      {"nameCn": "高仲甫", "nameEn": "Dan Kao", "vendor": "White box", "project": "TRAFFORD"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "Quicksliver"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C219B"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C4A15(GB300)"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "VR NVL144(C9A16)"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C2080"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C2195"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "DC-SCM(M1110)"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "Microsoft", "project": "C4A14 Samoa"},
+      {"nameCn": "張懷文", "nameEn": "Sharon Chang", "vendor": "SpaceX", "project": "SpaceXAI"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "White box", "project": "Astoria(TSMC)"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "White box", "project": "Beaverton"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Microsoft", "project": "C4144"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Oracle", "project": "GB300"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Oracle", "project": "VR Rubin"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Microsoft", "project": "C2184 GP RISER"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Google", "project": "VR300"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Oracle", "project": "NVL8"},
+      {"nameCn": "陳以婕", "nameEn": "Eve Chen", "vendor": "Coreweave", "project": "Vera C2"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "White box", "project": "Yoxi(MGX 4U)"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali01-41/49(Hooter)"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali09"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali01~08"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "K2V5-DVD"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "K2V5_DVD"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Fraser(Ambrose66)"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Hanuman86"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Makalu"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Makalu 49/56"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Bahubali56/59"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Monza83/84"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Monza83_84"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Sunflare"},
+      {"nameCn": "陳俊宏", "nameEn": "Ellis Chen", "vendor": "AWS", "project": "Graviton 6 / LYNX"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "White box", "project": "Ti PSU(ORV3PSU & ORV3Shelf)"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "White box", "project": "Astor"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "Ramon", "project": "NN2"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Arapaho"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Sandhawk"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Saber(Lenovo)"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Vino 2U/4U"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Bowie/Dagger"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "NetApp", "project": "Dagger2"},
+      {"nameCn": "陳彥霖", "nameEn": "Justin Chen", "vendor": "Maxwell", "project": "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) VR200 Earth"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "Makalu 56 PCBA sub-set"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "M5 MAC"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "Tiger42"},
+      {"nameCn": "陳愉心", "nameEn": "Katniss Chen", "vendor": "AWS", "project": "VENUS_NEPTUNE"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hopper78"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Qualcomm", "project": "5G_DU_Card"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "DUO"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Rover16C/RoverC16C"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman 01~06(Only L10&L12)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman 11(Only L10&L12)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman Rising Power(Only L10&L12)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Qualcomm", "project": "ISP"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Ramon", "project": "Gen 1"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Ramon", "project": "Gen1"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Ramon", "project": "NuPOD"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Qualcomm", "project": "AI100U"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Harrier"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Husky"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Maxwell", "project": "HPR (High Power Rack)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Maxwell", "project": "HPRV3 Anacapa(12KW)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "Maxwell", "project": "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) HPRv3 Mars"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Hanuman PCBA"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "Dagny(MCV2)"},
+      {"nameCn": "黃敬文", "nameEn": "Ian Huang", "vendor": "AWS", "project": "UPDB-3P6K"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "Microsoft", "project": "C2030"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "White box", "project": "HGX R200 NVL8"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "White box", "project": "HGX_RUBIN_NVL"},
+      {"nameCn": "鄭語婕", "nameEn": "Jenny Zheng", "vendor": "White box", "project": "Saint Elias"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "NetApp", "project": "Brunello"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "NetApp", "project": "Baker"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "Maxwell", "project": "T11 Vera (YV5 Platform)"},
+      {"nameCn": "賴庭寓", "nameEn": "Jerry Lai", "vendor": "Maxwell", "project": "Bletchley"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2010 Respin"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2010/A2110/A2210"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2040"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2051"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2080 (Cerberus)"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "A2061(FC400(Fungible))"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "C2010 2U sensor"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Microsoft", "project": "C2030 M2 riser"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Maxwell", "project": "Customer：Clemente = Ingrasys：Mercury"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Google", "project": "VR200"},
+      {"nameCn": "謝伊婷", "nameEn": "Lauren Hsieh", "vendor": "Google", "project": "VR300"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C2190"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C2141"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Nvidia", "project": "NVL-GB200(All System)"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Nvidia", "project": "NVL-GB300(All System)"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Nvidia", "project": "NVL4-P4132"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "D2110(power adapter module)"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C2154"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "A2010 Test card"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "A2040 Test card"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "D2112"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "C4143"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "AVA Card"},
+      {"nameCn": "謝定軒", "nameEn": "Kerwin Hsieh", "vendor": "Microsoft", "project": "Management 1G Switch"}
+    ];
+
+    let globalWorkbook = null;
+    let globalJsonData = [];
+    let originalFileName = "";
+    let extractedFileDate = "";
+    let extractedFileDateFormatted = "";
+    let originalHeaders = [];
+    let modelNameKey = "Model Name";
+    let ownerKey = "Owner";
+    let removedInvalidCount = 0;
+    let duplicateHhPnRemovedCount = 0;
+
+    document.getElementById('refCount').innerText = referenceData.length;
+    document.getElementById('modalRefCount').innerText = referenceData.length;
+
+    document.querySelectorAll('input[name="previewFormat"]').forEach(radio => {
+      radio.addEventListener('change', renderOwnerTable);
+    });
+
+    document.getElementById('excelFile').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      originalFileName = file.name;
+      document.getElementById('singleUploadText').innerText = originalFileName;
+
+      const parsedDate = extractDateFromFileName(originalFileName);
+      extractedFileDate = parsedDate.raw;
+      extractedFileDateFormatted = parsedDate.formatted;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const data = new Uint8Array(evt.target.result);
+        globalWorkbook = XLSX.read(data, { type: 'array' });
+        const worksheet = globalWorkbook.Sheets[globalWorkbook.SheetNames[0]];
+
+        const headerRowArray = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        originalHeaders = (headerRowArray && headerRowArray.length > 0)
+          ? headerRowArray[0].map(h => String(h || "").trim()).filter(h => h !== "")
+          : [];
+
+        modelNameKey = originalHeaders.find(h => /^(model name|model|project)$/i.test(h)) || "Model Name";
+        ownerKey = originalHeaders.find(h => /^owner$/i.test(h)) || "Owner";
+        if (!originalHeaders.includes(ownerKey)) originalHeaders.push(ownerKey);
+
+        const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const originalTotal = rawJson.length;
+
+        // 步驟 1：排除 Model Name 空白或僅為 "N" 的資料列
+        const validRows = rawJson.filter(row => {
+          const rawVal = row[modelNameKey] || row["Model Name"] || row["Model"] || row["Project"] || "";
+          const str = String(rawVal).trim();
+          return str !== "" && str.toUpperCase() !== "N";
+        });
+        removedInvalidCount = originalTotal - validRows.length;
+
+        // 步驟 2：HH P/N 自動去重 (若 HH PN 重複，僅保留第一筆，其餘刪除)
+        const seenHhPn = new Set();
+        duplicateHhPnRemovedCount = 0;
+
+        const deduplicatedRows = [];
+        validRows.forEach(row => {
+          const hhVal = String(row["HH P/N"] || row["HH PN"] || row["Product P/N"] || row["Part Number"] || row["PN"] || "").trim().toLowerCase();
+          
+          if (hhVal) {
+            if (seenHhPn.has(hhVal)) {
+              duplicateHhPnRemovedCount++;
+              return;
+            }
+            seenHhPn.add(hhVal);
+          }
+          deduplicatedRows.push(row);
+        });
+
+        // 步驟 3：公式切分整理
+        globalJsonData = deduplicatedRows.map((row, idx) => {
+          const currentModelVal = row[modelNameKey] || row["Model Name"] || row["Model"] || row["Project"] || "";
+          const extractedVal = extractByExcelFormula(currentModelVal);
+          return {
+            ...row,
+            __rawModelName: currentModelVal,
+            [modelNameKey]: extractedVal,
+            __origIndex: idx
+          };
+        });
+
+        processAndRenderOwner();
+        document.getElementById('downloadAllOwnerBtn').disabled = false;
+        document.getElementById('downloadFilteredOwnerBtn').disabled = false;
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    function extractByExcelFormula(rawVal) {
+      if (!rawVal) return "";
+      const str = String(rawVal).trim();
+      const firstSpaceIdx = str.indexOf(" ");
+      return firstSpaceIdx === -1 ? str : str.substring(firstSpaceIdx + 1).trim();
+    }
+
+    function findOwner(modelName, rowData = {}) {
+      const rawModel = String(modelName || "").trim().toLowerCase();
+      const normModel = normalizeStr(modelName);
+      const rawPn = String(rowData["HH P/N"] || rowData["HH PN"] || rowData["Product P/N"] || rowData["Part Number"] || rowData["PN"] || "").trim();
+
+      const contextText = (
+        rawModel + " " + rawPn + " " +
+        String(rowData["Manufacturer"] || "") + " " +
+        String(rowData["Customer"] || "") + " " +
+        String(rowData["Vendor"] || "")
+      ).toLowerCase();
+      const normContext = normalizeStr(contextText);
+
+      const isGpuDgxRubin = normModel === "gpudgxwrubin" || rawModel.includes("gpudgxw/rubin");
+      const isGpuDgxVera = normModel === "gpudgxwithvera" || rawModel.includes("gpudgxwithvera");
+      const isSpecialGpuModel = isGpuDgxRubin || isGpuDgxVera;
+      const isSpecialExcludedPn = /^p[a-z0-9]+-[a-z0-9]+-[a-z0-9]+$/i.test(rawPn);
+
+      if (isSpecialGpuModel && isSpecialExcludedPn) return null;
+      if (isSpecialGpuModel) {
+        return { nameCn: "胡乃蓉", nameEn: "Nana Hu", vendor: "Nvidia", project: isGpuDgxVera ? "GPUDGXWITHVERA" : "GPUDGXW/RUBIN" };
+      }
+      if (contextText.includes("softbank") || normContext.includes("softbank")) {
+        return { nameCn: "胡乃蓉", nameEn: "Nana Hu", vendor: "Softbank", project: "VR200 (Softbank)" };
+      }
+      if ((contextText.includes("space") || normContext.includes("spacex")) && (contextText.includes("l11") || normContext.includes("l11"))) {
+        return { nameCn: "張懷文", nameEn: "Sharon Chang", vendor: "SpaceX", project: "SpaceX L11" };
+      }
+      if (!normModel) return null;
+
+      let candidates = referenceData.filter(r => {
+        const projStr = String(r.project || "");
+        const normProj = normalizeStr(projStr);
+        const rawProj = projStr.toLowerCase();
+        return normProj === normModel || normModel.includes(normProj) || normProj.includes(normModel) || rawModel.includes(rawProj) || rawProj.includes(rawModel);
+      });
+
+      if (candidates.length === 0) return null;
+      if (candidates.length === 1) return candidates[0];
+
+      const matchedByVendor = candidates.find(c => {
+        const v = String(c.vendor || "");
+        return contextText.includes(v.toLowerCase()) || normContext.includes(normalizeStr(v));
+      });
+      if (matchedByVendor) return matchedByVendor;
+
+      return candidates.find(c => normalizeStr(String(c.project || "")) === normModel) || candidates[0];
+    }
+
+    function formatOwnerForDashboard(ownerObj) {
+      if (!ownerObj) return "";
+      const format = document.querySelector('input[name="previewFormat"]:checked').value;
+      if (format === 'en') return ownerObj.nameEn;
+      if (format === 'cn') return ownerObj.nameCn;
+      return `${ownerObj.nameEn} (${ownerObj.nameCn})`;
+    }
+
+    function processAndRenderOwner() {
+      if (!globalJsonData || globalJsonData.length === 0) return;
+      let matchedCount = 0;
+
+      globalJsonData.forEach(row => {
+        const currentModel = row[modelNameKey] || "";
+        const ownerObj = findOwner(currentModel, row);
+        if (ownerObj) {
+          row[ownerKey] = ownerObj.nameEn;
+          row["__ownerObj"] = ownerObj;
+          row["__isMatched"] = true;
+          matchedCount++;
+        } else {
+          row[ownerKey] = "";
+          row["__ownerObj"] = null;
+          row["__isMatched"] = false;
+        }
+      });
+
+      const dateNotice = extractedFileDateFormatted ? ` | 📅 識別日期：${extractedFileDateFormatted}` : "";
+      const filterNotice = removedInvalidCount > 0 ? `已排除 ${removedInvalidCount} 筆無效列` : "";
+      const dupNotice = duplicateHhPnRemovedCount > 0 ? `剔除 ${duplicateHhPnRemovedCount} 筆重複 HH P/N` : "";
+      const combinedNoticeParts = [filterNotice, dupNotice].filter(Boolean);
+      const combinedNotice = combinedNoticeParts.length > 0 ? ` (${combinedNoticeParts.join('，')})` : "";
+
+      document.getElementById('matchStats').innerText = `處理後共 ${globalJsonData.length} 筆${combinedNotice}，匹配 ${matchedCount} 筆 (${Math.round((matchedCount/globalJsonData.length)*100)}%)${dateNotice}`;
+      renderOwnerTable();
+    }
+
+    function getProcessedOwnerData() {
+      if (!globalJsonData || globalJsonData.length === 0) return [];
+      const statusFilter = document.getElementById('statusFilter').value;
+      const sortOrder = document.getElementById('sortOrder').value;
+      const searchQuery = (document.getElementById('tableSearch').value || "").trim().toLowerCase();
+      const normQuery = normalizeStr(searchQuery);
+
+      let list = globalJsonData.filter(row => {
+        if (statusFilter === 'unmatched' && row.__isMatched) return false;
+        if (statusFilter === 'matched' && !row.__isMatched) return false;
+        if (searchQuery) {
+          const rawModel = String(row.__rawModelName || "").toLowerCase();
+          const formulaModel = String(row[modelNameKey] || "").toLowerCase();
+          const hhpn = String(row["HH P/N"] || row["HH PN"] || "").toLowerCase();
+          const pn = String(row["Product P/N"] || row["PN"] || "").toLowerCase();
+          const mfg = String(row["Manufacturer"] || "").toLowerCase();
+          const ownerEn = String(row[ownerKey] || "").toLowerCase();
+          const ownerCn = row.__ownerObj ? String(row.__ownerObj.nameCn || "").toLowerCase() : "";
+
+          const matchNormal = rawModel.includes(searchQuery) || formulaModel.includes(searchQuery) || hhpn.includes(searchQuery) || pn.includes(searchQuery) || mfg.includes(searchQuery) || ownerEn.includes(searchQuery) || ownerCn.includes(searchQuery);
+          const matchNorm = (normQuery && normalizeStr(formulaModel).includes(normQuery)) || (normQuery && normalizeStr(hhpn).includes(normQuery)) || (normQuery && normalizeStr(pn).includes(normQuery));
+          if (!matchNormal && !matchNorm) return false;
+        }
+        return true;
+      });
+
+      list.sort((a, b) => {
+        if (sortOrder === 'unmatchedFirst') {
+          if (a.__isMatched !== b.__isMatched) return a.__isMatched ? 1 : -1;
+        } else if (sortOrder === 'matchedFirst') {
+          if (a.__isMatched !== b.__isMatched) return a.__isMatched ? -1 : 1;
+        }
+        return a.__origIndex - b.__origIndex;
+      });
+      return list;
+    }
+
+    function renderOwnerTable() {
+      const tbody = document.getElementById('ownerTableBody');
+      if (!globalJsonData || globalJsonData.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">請先上傳 Excel 檔案以查看比對結果</td></tr>`;
+        return;
+      }
+      const displayList = getProcessedOwnerData();
+      if (displayList.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">查無符合篩選條件的資料</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = displayList.map(row => {
+        const rawModel = row.__rawModelName || "";
+        const formulaModel = row[modelNameKey] || "";
+        const isMatched = row.__isMatched;
+        const ownerDisplay = isMatched ? formatOwnerForDashboard(row.__ownerObj) : "";
+        const hhPnVal = row["HH P/N"] || row["HH PN"] || row["Product P/N"] || row["PN"] || "-";
+        const prodPnVal = row["Product P/N"] || row["PN"] || "-";
+
+        return `
+          <tr class="${isMatched ? 'hover:bg-slate-50' : 'bg-rose-50/40 hover:bg-rose-50'}">
+            <td class="p-3 text-slate-400">${escapeHtml(rawModel) || "-"}</td>
+            <td class="p-3 font-semibold text-slate-900">${escapeHtml(formulaModel) || "-"}</td>
+            <td class="p-3 text-blue-700 font-mono font-semibold">${escapeHtml(hhPnVal)}</td>
+            <td class="p-3 text-slate-500 font-mono">${escapeHtml(prodPnVal)}</td>
+            <td class="p-3 text-slate-500">${escapeHtml(row["Manufacturer"] || "-")}</td>
+            <td class="p-3 font-semibold ${isMatched ? 'text-emerald-700' : 'text-rose-500 italic'}">${escapeHtml(ownerDisplay) || "未匹配"}</td>
+            <td class="p-3">
+              ${isMatched 
+                ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-solid fa-check text-[9px]"></i> 已匹配</span>' 
+                : '<span class="bg-rose-100 text-rose-700 text-[10px] font-medium px-2 py-0.5 rounded-full inline-flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation text-[9px]"></i> 查無對照</span>'}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function cleanDataForExport(dataList) {
+      return dataList.map(item => {
+        const clean = {};
+        if (originalHeaders && originalHeaders.length > 0) {
+          originalHeaders.forEach(header => clean[header] = item[header] !== undefined ? item[header] : "");
+        } else {
+          Object.keys(item).forEach(key => { if (!key.startsWith("__")) clean[key] = item[key]; });
+        }
+        return clean;
+      });
+    }
+
+    async function downloadAllExcel() {
+      if (!globalWorkbook || !globalJsonData.length) return;
+      const exportList = cleanDataForExport(globalJsonData);
+      const ws = XLSX.utils.json_to_sheet(exportList, { header: originalHeaders });
+      applyHeaderStyle(ws);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      const dateStr = extractedFileDate || new Date().toISOString().slice(0,10).replace(/-/g,"");
+      await saveWorkbookWithPicker(wb, `Agile_ProjectOwner_All_${dateStr}.xlsx`);
+    }
+
+    async function downloadFilteredExcel() {
+      const list = getProcessedOwnerData();
+      if (!list.length) return alert("篩選結果為空！");
+      const exportList = cleanDataForExport(list);
+      const ws = XLSX.utils.json_to_sheet(exportList, { header: originalHeaders });
+      applyHeaderStyle(ws);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "FilteredResult");
+      const dateStr = extractedFileDate || new Date().toISOString().slice(0,10).replace(/-/g,"");
+      await saveWorkbookWithPicker(wb, `Agile_Filtered_${dateStr}.xlsx`);
+    }
+
+    function toggleReferenceModal() {
+      const m = document.getElementById('refModal');
+      m.classList.toggle('hidden');
+      if (!m.classList.contains('hidden')) renderRefTable();
+    }
+
+    function renderRefTable() {
+      const query = (document.getElementById('searchInput').value || "").toLowerCase();
+      const normQuery = normalizeStr(query);
+      const tbody = document.getElementById('refTableBody');
+      const filtered = referenceData.filter(r => {
+        const cn = String(r.nameCn || "");
+        const en = String(r.nameEn || "").toLowerCase();
+        const proj = String(r.project || "").toLowerCase();
+        const ven = String(r.vendor || "").toLowerCase();
+        return cn.includes(query) || en.includes(query) || proj.includes(query) || ven.includes(query) ||
+          (normQuery && normalizeStr(proj).includes(normQuery));
+      });
+      tbody.innerHTML = filtered.map(r => `
+        <tr class="hover:bg-slate-50">
+          <td class="p-2 font-medium">${r.nameCn || "-"}</td>
+          <td class="p-2 text-slate-600">${r.nameEn || "-"}</td>
+          <td class="p-2 text-slate-500">${r.vendor || "-"}</td>
+          <td class="p-2 font-mono text-indigo-600">${r.project || "-"}</td>
+        </tr>
+      `).join('');
+    }
+
+    // ==========================================
+    // 模組 2 專屬邏輯 (每週比對 & RD 追蹤 & Part Family)
+    // ==========================================
+    const fixedCcList = [
+      { role: "CC", name: "Doing Wang 王斯弘", email: "doing.sy.wang@ingrasys.com" },
+      { role: "CC", name: "Sam Taso 曹勝峰", email: "sam.sf.taso@ingrasys.com" },
+      { role: "CC", name: "Doris Hsu 許綿瑩", email: "doris.my.hsu@ingrasys.com" },
+      { role: "CC", name: "Lisa Chang 張庭毓", email: "lisa.ty.chang@ingrasys.com" },
+      { role: "CC", name: "ShuJung Hsu 許書容", email: "shujung.hsu@ingrasys.com" }
+    ];
+
+    const defaultRdDatabase = {
+      "C4143": [{ role: "EE", name: "Vance Yang 楊竣翔", email: "vance.ch.yang@fii-foxconn.com" }, { role: "SE", name: "Nick Liao 廖家二", email: "nick.ce.liao@fii-foxconn.com" }],
+      "Katmai_CarlsbadRetreadTahitiApolloAurora": [],
+      "VR NVL144(PCBA)": [{ role: "EE", name: "Benson 许昌谚", email: "benson.cy.hsu@fii-foxconn.com" }, { role: "SE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" }],
+      "VRU (PCBA)": [{ role: "EE", name: "Derek Wu 吳愷威", email: "derek.kw.wu@fii-foxconn.com" }, { role: "SE", name: "Chris Huang 黃靖程", email: "chris.jc.huang@fii-foxconn.com" }],
+      "B300 AC": [{ role: "EE", name: "Jeff 童元甫", email: "jeff.yf.tong@fii-foxconn.com" }, { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" }, { role: "SE", name: "Cynthia 葉孟儒", email: "cynthia.mj.yeh@fii-foxconn.com" }, { role: "SE", name: "Ying Liu 劉瑩", email: "liuying.y.liu@fii-foxconn.com" }],
+      "E6_IS": [{ role: "EE", name: "Ken 張世徽", email: "shih-hui.chang@fii-foxconn.com" }, { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" }, { role: "SE", name: "Cynthia 葉孟儒", email: "cynthia.mj.yeh@fii-foxconn.com" }, { role: "SE", name: "Ying Liu 劉瑩", email: "liuying.y.liu@fii-foxconn.com" }],
+      "G6-8HD": [{ role: "EE", name: "Ken 張世徽", email: "shih-hui.chang@fii-foxconn.com" }, { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" }, { role: "SE", name: "Cynthia 葉孟儒", email: "cynthia.mj.yeh@fii-foxconn.com" }, { role: "SE", name: "Ying Liu 劉瑩", email: "liuying.y.liu@fii-foxconn.com" }],
+      "POD32 POD128": [{ role: "EE", name: "Tim 林庭佑", email: "tim.ty.lin@fii-foxconn.com" }, { role: "EE", name: "Allen 鄭傑倫", email: "allen.cl.cheng@fii-foxconn.com" }, { role: "EE", name: "徐維成", email: "wei-cheng.xu@fii-foxconn.com" }, { role: "SE", name: "Nathan 周裕哲", email: "nathan.yc.chou@fii-foxconn.com" }, { role: "SE", name: "Tim 林福川", email: "tim.fc.lin@fii-foxconn.com" }],
+      "VR NVL144(All System)": [{ role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" }, { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }],
+      "Language Processing Unit (LPU)": [{ role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" }, { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }],
+      "VR200": [{ role: "EE", name: "Thomas 葉宇桐", email: "thomas.yt.yeh@fii-foxconn.com" }, { role: "SE", name: "Tina 李采庭", email: "tina.t.lee@fii-foxconn.com" }],
+      "Tiger(Graviton 5)": [{ role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" }, { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" }, { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }],
+      "Tiger49/56": [{ role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" }, { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" }, { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }],
+      "Quicksliver": [{ role: "EE", name: "Joe Tsai 蔡朝揚", email: "joe.cy.tsai@fii-foxconn.com" }, { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }],
+      "C219B": [{ role: "EE", name: "Andy Wang 王靖緯", email: "andy.cw.wang@fii-foxconn.com" }, { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }],
+      "C4A15(GB300)": [{ role: "EE", name: "You Ning Xu 許佑寧", email: "you-ning.xu@fii-foxconn.com" }, { role: "SE", name: "Emily Ma 馬千琇", email: "emily.ch.ma@fii-foxconn.com" }],
+      "VR NVL144(C9A16)": [{ role: "EE", name: "Barton Yeh 葉于睿", email: "barton.yj.yeh@fii-foxconn.com" }, { role: "SE", name: "Tako Chen 陳博聖", email: "tako.ps.chen@fii-foxconn.com" }],
+      "C4A14 Samoa": [{ role: "EE", name: "Jeff Lin 林明杰", email: "jeff.mj.lin@fii-foxconn.com" }, { role: "SE", name: "Tako Chen 陳博聖", email: "tako.ps.chen@fii-foxconn.com" }],
+      "Astoria(TSMC)": [{ role: "EE", name: "Jeff Tong 童元甫", email: "jeff.yf.tong@fii-foxconn.com" }, { role: "SE", name: "Luke Wu 巫志祥", email: "luke.ch.wu@fii-foxconn.com" }],
+      "Beaverton": [{ role: "EE", name: "Jeff Tong 童元甫", email: "jeff.yf.tong@fii-foxconn.com" }, { role: "SE", name: "Luke Wu 巫志祥", email: "luke.ch.wu@fii-foxconn.com" }],
+      "C4144": [{ role: "EE", name: "Joe Tsai 蔡朝揚", email: "joe.cy.tsai@fii-foxconn.com" }, { role: "EE", name: "Eden Huang 黃宏裕", email: "eden.hy.huang@fii-foxconn.com" }, { role: "EE", name: "Alan Lee 李孟倫", email: "alan.ml.lee@fii-foxconn.com" }, { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }, { role: "SE", name: "Vita Kuo 郭人慈", email: "vita.rc.kuo@fii-foxconn.com" }, { role: "SE", name: "Emily Ma 馬千琇", email: "emily.ch.ma@fii-foxconn.com" }],
+      "GB300": [{ role: "EE", name: "Knoll Kong 孔令恩", email: "knoll.le.kong@fii-foxconn.com" }, { role: "SE", name: "林圆融Amber Yj Lin", email: "amber.yj.lin@fii-foxconn.com" }],
+      "VR Rubin": [{ role: "EE", name: "Johnson Hsueh 薛丞恩", email: "johnson.ce.hsueh@fii-foxconn.com" }, { role: "SE", name: "Jen Liao 廖亮蓁", email: "jen.lj.liao@fii-foxconn.com" }, { role: "SE", name: "Megan Liou 劉立徽", email: "li-hui.liou@fii-foxconn.com" }, { role: "SE", name: "Mina Lin 林怡妤", email: "mina.yy.lin@fii-foxconn.com" }],
+      "C2184 GP RISER": [{ role: "EE", name: "Andy Wang 王靖緯", email: "andy.cw.wang@fii-foxconn.com" }, { role: "SE", name: "Steven Lin 林紀汶", email: "steven.cw.lin@fii-foxconn.com" }],
+      "Makalu 56 PCBA sub-set": [{ role: "EE", name: "Vicky Yu 于江濤", email: "vicky.jt.yu@fii-foxconn.com" }, { role: "SE", name: "Yingly Li 李瑩", email: "yingly.y.li@fii-foxconn.com" }],
+      "M5 MAC": [{ role: "EE", name: "Helen Wang 王思涵", email: "helen.sh.wang@fii-foxconn.com" }, { role: "SE", name: "Up-J Lin 林上傑", email: "upj.sg.lin@fii-foxconn.com" }],
+      "Tiger42": [{ role: "EE", name: "Tweety Ys Lin 林於聖", email: "tweety.ys.lin@fii-foxconn.com" }, { role: "SE", name: "Mars Chang 張軒銘", email: "mars.xm.chang@fii-foxconn.com" }, { role: "SE", name: "Davin Ch Yeh 葉承瀚", email: "davin.ch.yeh@fii-foxconn.com" }],
+      "5G_DU_Card": [{ role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" }, { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }],
+      "Rover16C/RoverC16C": [{ role: "SE", name: "辛卓昊 Derica Xin", email: "derica.zh.xin@fii-foxconn.com" }],
+      "Hanuman 01~06(Only L10&L12)": [{ role: "SE", name: "Lucy CY Lu (盧佳吟)", email: "lucy.cy.lu@fii-foxconn.com" }],
+      "Hanuman 11(Only L10&L12)": [{ role: "SE", name: "林圆融Amber Yj Lin", email: "amber.yj.lin@fii-foxconn.com" }],
+      "Hanuman Rising Power(Only L10&L12)": [{ role: "SE", name: "林圆融Amber Yj Lin", email: "amber.yj.lin@fii-foxconn.com" }],
+      "ISP": [{ role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" }, { role: "SE", name: "Sen Yang 楊授森", email: "sen.ss.yang@fii-foxconn.com" }],
+      "AI100U": [{ role: "EE", name: "Tom Chen 陳暉達", email: "tom.ht.chen@fii-foxconn.com" }, { role: "SE", name: "AI100U", email: "sen.ss.yang@fii-foxconn.com" }],
+      "Harrier": [{ role: "SE", name: "辛卓昊 Derica Xin", email: "derica.zh.xin@fii-foxconn.com" }],
+      "Husky": [{ role: "EE", name: "Cindy Wang 王雨薇", email: "cindy.yw.wang@fii-foxconn.com" }, { role: "SE", name: "Up-J Lin 林上傑", email: "upj.sg.lin@fii-foxconn.com" }],
+      "HPR (High Power Rack)": [{ role: "SE", name: "Jessy Cf Chang", email: "jessy.cf.chang@fii-foxconn.com" }],
+      "HPRV3 Anacapa(12KW)": [{ role: "SE", name: "Weber Chen 陳韋豪", email: "weber.wh.chen@fii-foxconn.com" }],
+      "San Miguel VR+HPPv (VR200 Earth+HPRv3 Mars) HPRv3 Mars": [{ role: "SE", name: "Weber Chen 陳韋豪", email: "weber.wh.chen@fii-foxconn.com" }],
+      "Hanuman PCBA": [{ role: "EE", name: "Eiden Han 韓毅", email: "eiden.y.han@fii-foxconn.com" }, { role: "SE", name: "Eiden Han 韓毅", email: "eiden.y.han@fii-foxconn.com" }]
+    };
+
+    let rdDatabase = JSON.parse(JSON.stringify(defaultRdDatabase));
+    const globalCcString = fixedCcList.map(i => i.email).join("; ");
+
+    let compareResults = [];
+    let compareHeaders = [];
+    let parsedDashboardData = {};
+    let currentMailData = { to: "", cc: "", subject: "", body: "" };
+    let missingFamilyList = [];
+    let module2FileDate = "";
+    
+    // 記錄每個 HH P/N 關聯的 Part Family, 供應商料號, 廠商
+    let hhpnDetailsMap = {};
+
+    function getRdList(keyOrObj) {
+      if (!keyOrObj) return [];
+      const val = typeof keyOrObj === 'string' ? rdDatabase[keyOrObj] : keyOrObj;
+      if (!val) return [];
+      return Array.isArray(val) ? val : [val];
+    }
+
+    function findHeader(hdrs, target) {
+      const exact = hdrs.find(h => normalize(h).toLowerCase() === target.toLowerCase());
+      if (exact) return exact;
+      return hdrs.find(h => normalize(h).replace(/\s/g, "").toLowerCase() === target.replace(/\s/g, "").toLowerCase());
+    }
+
+    function findMatchedProject(excelModel) {
+      const cleanExcel = normalizeStr(excelModel);
+      if (!cleanExcel) return null;
+      for (const k in rdDatabase) {
+        if (cleanExcel === normalizeStr(k)) return k;
+      }
+      const sorted = Object.keys(rdDatabase).sort((a,b) => b.length - a.length);
+      for (const k of sorted) {
+        const ck = normalizeStr(k);
+        if (ck && (cleanExcel.includes(ck) || ck.includes(cleanExcel))) return k;
+      }
+      return null;
+    }
+
+    async function readExcelRows(file) {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      return XLSX.utils.sheet_to_json(ws, { defval: "", raw: false });
+    }
+
+    document.getElementById('lastFile').addEventListener('change', e => {
+      document.getElementById('lastName').textContent = e.target.files[0] ? e.target.files[0].name : "尚未選擇檔案";
+    });
+    document.getElementById('thisFile').addEventListener('change', e => {
+      if (e.target.files[0]) {
+        document.getElementById('thisName').textContent = e.target.files[0].name;
+        module2FileDate = extractDateFromFileName(e.target.files[0].name).raw;
+      } else {
+        document.getElementById('thisName').textContent = "尚未選擇檔案";
+        module2FileDate = "";
+      }
+    });
+    document.getElementById('rdMappingFile').addEventListener('change', e => {
+      document.getElementById('rdMappingName').textContent = e.target.files[0] ? e.target.files[0].name : "使用系統預設對照庫";
+    });
+
+    document.getElementById('compareBtn').addEventListener('click', async () => {
+      const lastF = document.getElementById('lastFile').files[0];
+      const thisF = document.getElementById('thisFile').files[0];
+      const rdF = document.getElementById('rdMappingFile').files[0];
+
+      if (!lastF || !thisF) return alert("請同時上傳「上週檔案」與「這週檔案」！");
+
+      document.getElementById('compareBtn').disabled = true;
+      document.getElementById('compareStatus').textContent = "比對處理中...";
+
+      try {
+        if (rdF) {
+          const rdRows = await readExcelRows(rdF);
+          const tempDb = {};
+          rdRows.forEach(r => {
+            const mKey = normalize(r["Model Name"] || r["Project"] || r["Model"]);
+            const rRole = normalize(r["Role"] || r["角色"] || "SE");
+            const rName = normalize(r["RD Name"] || r["RD 姓名"] || r["Name"]);
+            const rEmail = normalize(r["RD Email"] || r["Email"]);
+            if (mKey && rEmail) {
+              if (!tempDb[mKey]) tempDb[mKey] = [];
+              tempDb[mKey].push({ role: rRole, name: rName || "未命名", email: rEmail });
+            }
+          });
+          if (Object.keys(tempDb).length > 0) rdDatabase = tempDb;
+        }
+
+        const [lastRows, thisRows] = await Promise.all([readExcelRows(lastF), readExcelRows(thisF)]);
+        const lastHeaders = Object.keys(lastRows[0] || {});
+        const thisHeaders = Object.keys(thisRows[0] || {});
+
+        const hhLast = findHeader(lastHeaders, "HH P/N") || findHeader(lastHeaders, "Product P/N") || "HH P/N";
+        const ownerLast = findHeader(lastHeaders, "Owner") || "Owner";
+        const hhThis = findHeader(thisHeaders, "HH P/N") || findHeader(thisHeaders, "Product P/N") || "HH P/N";
+        const ownerThis = findHeader(thisHeaders, "Owner") || "Owner";
+
+        compareHeaders = unique([...lastHeaders, ...thisHeaders]);
+
+        const makeKey = (r, h1, h2) => normalize(r[h1]) + "|||" + normalize(r[h2]).toLowerCase();
+
+        const lastMap = new Map();
+        lastRows.forEach(r => {
+          const k = makeKey(r, hhLast, ownerLast);
+          if (normalize(r[hhLast]) || normalize(r[ownerLast])) lastMap.set(k, r);
+        });
+
+        const thisMap = new Map();
+        thisRows.forEach(r => {
+          const k = makeKey(r, hhThis, ownerThis);
+          if (normalize(r[hhThis]) || normalize(r[ownerThis])) thisMap.set(k, r);
+        });
+
+        compareResults = [];
+        for (const [k, oldRow] of lastMap.entries()) {
+          const cur = thisMap.get(k);
+          const base = {};
+          compareHeaders.forEach(h => base[h] = cur?.[h] ?? oldRow?.[h] ?? "");
+          base["資料類型"] = cur ? "上週仍存在" : "上週已解決";
+          compareResults.push(base);
+        }
+
+        for (const [k, curRow] of thisMap.entries()) {
+          if (!lastMap.has(k)) {
+            const base = {};
+            compareHeaders.forEach(h => base[h] = curRow?.[h] ?? "");
+            base["資料類型"] = "本週新增";
+            compareResults.push(base);
+          }
+        }
+
+        const typeOrder = {"上週仍存在": 1, "本週新增": 2, "上週已解決": 3};
+        compareResults.sort((a,b) =>
+          normalize(a["Owner"]).localeCompare(normalize(b["Owner"]), "zh-Hant") ||
+          (typeOrder[a["資料類型"]] || 9) - (typeOrder[b["資料類型"]] || 9) ||
+          normalize(a[hhThis]).localeCompare(normalize(b[hhThis]))
+        );
+
+        buildMissingFamilyData(compareResults);
+
+        document.getElementById('solvedCount').textContent = compareResults.filter(r => r["資料類型"] === "上週已解決").length.toLocaleString();
+        document.getElementById('openCount').textContent = compareResults.filter(r => r["資料類型"] === "上週仍存在").length.toLocaleString();
+        document.getElementById('newCount').textContent = compareResults.filter(r => r["資料類型"] === "本週新增").length.toLocaleString();
+        document.getElementById('missingFamilyCount').textContent = missingFamilyList.length.toLocaleString();
+
+        // 載入 Owner 下拉選單
+        const owners = unique(compareResults.map(r => normalize(r["Owner"])).filter(Boolean)).sort((a,b) => a.localeCompare(b, "zh-Hant"));
+        document.getElementById('ownerSelect').innerHTML = '<option value="">全部 Owner</option>' + owners.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join("");
+
+        // 載入 Model Name 下拉選單
+        const modelH = findHeader(compareHeaders, "Model Name") || "Model Name";
+        const models = unique(compareResults.map(r => normalize(r[modelH])).filter(Boolean)).sort((a,b) => a.localeCompare(b, "zh-Hant"));
+        document.getElementById('modelSelect').innerHTML = '<option value="">全部 Model Name</option>' + models.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join("");
+
+        document.getElementById('stats').classList.remove('hidden');
+        document.getElementById('searchCard').classList.remove('hidden');
+        renderCompareDetailTable();
+        buildRdDashboard(compareResults);
+
+        document.getElementById('compareStatus').textContent = `比對成功，共 ${compareResults.length.toLocaleString()} 筆資料`;
+      } catch (err) {
+        document.getElementById('compareStatus').textContent = "";
+        alert("比對失敗：" + err.message);
+      } finally {
+        document.getElementById('compareBtn').disabled = false;
+      }
+    });
+
+    function buildMissingFamilyData(rows) {
+      const modelH = findHeader(compareHeaders, "Model Name") || "Model Name";
+      const hhH = findHeader(compareHeaders, "HH P/N") || findHeader(compareHeaders, "Product P/N") || "HH P/N";
+      const pfH = findHeader(compareHeaders, "Part Family") || "Part Family";
+      const mfrPnH = compareHeaders.find(h => /^(manufacturer p\/n|mfr p\/n|vendor p\/n|供應商料號)$/i.test(h)) || hhH;
+      const mfrH = compareHeaders.find(h => /^(manufacturer|vendor|mfr|供應商|製造商)$/i.test(h)) || "Manufacturer";
+      const ownerH = findHeader(compareHeaders, "Owner") || "Owner";
+
+      const pendings = rows.filter(r => r["資料類型"] === "本週新增" || r["資料類型"] === "上週仍存在");
+      missingFamilyList = [];
+      hhpnDetailsMap = {};
+
+      pendings.forEach(row => {
+        const hhVal = normalize(row[hhH]);
+        const vPn = normalize(row[mfrPnH]);
+        const vName = normalize(row[mfrH]);
+        const pfVal = normalize(row[pfH]);
+
+        if (hhVal && !hhpnDetailsMap[hhVal]) {
+          hhpnDetailsMap[hhVal] = {
+            partFamily: pfVal,
+            vendorPn: vPn,
+            vendorName: vName
+          };
+        }
+
+        if (!pfVal) {
+          let gen = vPn && vName ? `${vPn}_${vName}` : vPn || vName || "Unknown_Family";
+
+          missingFamilyList.push({
+            modelName: normalize(row[modelH]),
+            hhpn: hhVal,
+            vendorPn: vPn,
+            vendorName: vName,
+            dataType: row["資料類型"],
+            generatedFamily: gen,
+            owner: normalize(row[ownerH]),
+            rawRow: row
+          });
+        }
+      });
+
+      renderMissingFamilyTable();
+      if (missingFamilyList.length > 0) {
+        document.getElementById('missingFamilyCard').classList.remove('hidden');
+      } else {
+        document.getElementById('missingFamilyCard').classList.add('hidden');
+      }
+    }
+
+    function renderMissingFamilyTable() {
+      const tbody = document.getElementById('missingFamilyBody');
+      const kw = (document.getElementById('missingFamilySearch').value || "").trim().toLowerCase();
+      const filtered = missingFamilyList.filter(i => 
+        !kw || i.modelName.toLowerCase().includes(kw) || i.hhpn.toLowerCase().includes(kw) || 
+        i.vendorPn.toLowerCase().includes(kw) || i.vendorName.toLowerCase().includes(kw) || 
+        i.generatedFamily.toLowerCase().includes(kw) || i.owner.toLowerCase().includes(kw)
+      );
+
+      if (!filtered.length) {
+        tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-400">太棒了！未結案資料中沒有缺漏 Part Family 的項目。</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(i => `
+        <tr>
+          <td><b>${escapeHtml(i.modelName || '-')}</b></td>
+          <td class="font-mono">${escapeHtml(i.hhpn || '-')}</td>
+          <td class="font-mono">${escapeHtml(i.vendorPn || '-')}</td>
+          <td>${escapeHtml(i.vendorName || '-')}</td>
+          <td><span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${i.dataType === '本週新增' ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}">${escapeHtml(i.dataType)}</span></td>
+          <td class="font-mono font-semibold text-amber-700 bg-amber-50/50">${escapeHtml(i.generatedFamily)}</td>
+          <td><b>${escapeHtml(i.owner || '-')}</b></td>
+        </tr>
+      `).join('');
+    }
+
+    async function downloadMissingFamilyExcel() {
+      if (!missingFamilyList.length) return alert("無待補資料！");
+      const pfH = findHeader(compareHeaders, "Part Family") || "Part Family";
+      const exportData = missingFamilyList.map(item => {
+        const row = { ...item.rawRow };
+        row[pfH] = item.generatedFamily;
+        row["資料類型"] = item.dataType;
+        return row;
+      });
+      const expHeaders = ["資料類型", ...compareHeaders];
+      const aoa = [expHeaders, ...exportData.map(r => expHeaders.map(h => r[h] ?? ""))];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      applyHeaderStyle(ws);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "待補PartFamily");
+      const dateStr = module2FileDate || new Date().toISOString().slice(0,10).replace(/-/g,"");
+      await saveWorkbookWithPicker(wb, `Agile_Missing_PartFamily_${dateStr}.xlsx`);
+    }
+
+    function buildRdDashboard(rows) {
+      parsedDashboardData = {};
+      const modelH = findHeader(compareHeaders, "Model Name") || "Model Name";
+      const hhH = findHeader(compareHeaders, "HH P/N") || findHeader(compareHeaders, "Product P/N") || "HH P/N";
+      const pendings = rows.filter(r => r["資料類型"] === "本週新增" || r["資料類型"] === "上週仍存在");
+
+      pendings.forEach(row => {
+        const rawModel = normalize(row[modelH]);
+        const hhpn = normalize(row[hhH]);
+        if (!rawModel) return;
+
+        if (!parsedDashboardData[rawModel]) {
+          const matched = findMatchedProject(rawModel);
+          parsedDashboardData[rawModel] = {
+            matchedKey: matched,
+            rdList: matched ? getRdList(matched) : [],
+            hhpns: []
+          };
+        }
+        if (hhpn && !parsedDashboardData[rawModel].hhpns.includes(hhpn)) {
+          parsedDashboardData[rawModel].hhpns.push(hhpn);
+        }
+      });
+
+      const tbody = document.getElementById('dashboardBody');
+      tbody.innerHTML = "";
+      const keys = Object.keys(parsedDashboardData);
+
+      if (!keys.length) {
+        tbody.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-400">未找到需要追蹤的專案或無未結案料號</td></tr>`;
+      } else {
+        tbody.innerHTML = keys.map(model => {
+          const item = parsedDashboardData[model];
+          const hasEmails = item.rdList.some(r => r.email);
+          const pnsHtml = item.hhpns.length > 0 
+            ? `<div class="pn-container"><ul>${item.hhpns.map(p => `<li>${escapeHtml(p)}</li>`).join('')}</ul></div>`
+            : '<span class="text-slate-400">(無料號)</span>';
+
+          const namesHtml = item.rdList.length > 0 
+            ? item.rdList.map(r => `<div>${escapeHtml(r.name || '未命名')}</div>`).join('') 
+            : '<span class="text-slate-400">未指定</span>';
+
+          const emailsHtml = item.rdList.length > 0 
+            ? item.rdList.map(r => `<div class="font-mono text-slate-500">${escapeHtml(r.email || '-')}</div>`).join('') 
+            : '<span class="text-slate-400">-</span>';
+
+          const actionBtn = hasEmails 
+            ? `<button class="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs transition" onclick="generateEmail('${escapeHtml(model)}')">產生信件</button>`
+            : `<span class="px-2 py-0.5 bg-rose-100 text-rose-700 rounded text-[11px] font-semibold">未對應 RD</span>`;
+
+          return `
+            <tr>
+              <td><b>${escapeHtml(model)}</b></td>
+              <td>${item.matchedKey ? `<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-semibold text-[11px]">${escapeHtml(item.matchedKey)}</span>` : '<span class="px-2 py-0.5 bg-rose-100 text-rose-700 rounded font-semibold text-[11px]">未找到對照</span>'}</td>
+              <td>${namesHtml}</td>
+              <td>${emailsHtml}</td>
+              <td>${pnsHtml} <div class="text-[11px] text-slate-500 mt-1">共 ${item.hhpns.length} 筆</div></td>
+              <td>${actionBtn}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+      document.getElementById('dashboardCard').classList.remove('hidden');
+    }
+
+    // 彈窗開關控制
+    function closeMissingNoticeModal() {
+      document.getElementById('missingNoticeModal').classList.add('hidden');
+    }
+
+    function generateEmail(rawModelKey) {
+      const info = parsedDashboardData[rawModelKey];
+      if (!info || !info.rdList.length) return alert("該專案未對照到 RD 資料！");
+      const valid = info.rdList.map(r => r.email).filter(Boolean);
+      if (!valid.length) return alert("無有效 RD Email！");
+
+      const toStr = valid.join("; ");
+      const namesStr = info.rdList.map(r => r.name || "RD").join(", ");
+      const proj = info.matchedKey || rawModelKey;
+
+      // 追蹤缺失 Part Family 項目
+      const missingInThisEmail = [];
+      const lines = [];
+
+      info.hhpns.forEach(pn => {
+        const detail = hhpnDetailsMap[pn] || {};
+        let pf = detail.partFamily;
+        if (pf) {
+          lines.push(`- ${pn} (Part Family: ${pf})`);
+        } else {
+          const vPn = detail.vendorPn || "";
+          const vName = detail.vendorName || "";
+          let gen = vPn && vName ? `${vPn}_${vName}` : vPn || vName || "Unknown_Family";
+          lines.push(`- ${pn} (Part Family: ${gen} [系統補上])`);
+          missingInThisEmail.push({ hhpn: pn, generatedFamily: gen });
+        }
+      });
+
+      const pnsStr = lines.length > 0 ? lines.join('\n') : "(無料號清單)";
+
+      currentMailData.to = toStr;
+      currentMailData.cc = globalCcString;
+      currentMailData.subject = `[${proj}] 請協助上傳 Datasheet`;
+      currentMailData.body = `Hi ${namesStr},\n\n${proj} 的以下 PN 需要您上傳 datasheet ，再麻煩您協助上傳至 PDM：\n\n${pnsStr}\n\nHi ShuJung,\n\n待 R&D 提供 datasheet 後，再麻煩您協助上傳，謝謝！\n\nThank you!`;
+
+      document.getElementById('mailTo').textContent = currentMailData.to;
+      document.getElementById('mailCc').textContent = currentMailData.cc;
+      document.getElementById('mailSubject').textContent = currentMailData.subject;
+      document.getElementById('mailBody').value = currentMailData.body;
+      document.getElementById('copyNotice').classList.add('hidden');
+
+      const card = document.getElementById('emailCard');
+      card.classList.remove('hidden');
+      card.scrollIntoView({ behavior: 'smooth' });
+
+      // 若有缺失 Part Family 由系統自動補齊的料號，觸發彈窗提醒
+      if (missingInThisEmail.length > 0) {
+        document.getElementById('noticeProjectName').textContent = proj;
+        document.getElementById('noticeMissingCount').textContent = missingInThisEmail.length;
+        const tbody = document.getElementById('noticeMissingTableBody');
+        tbody.innerHTML = missingInThisEmail.map(m => `
+          <tr>
+            <td class="p-2 font-mono font-bold text-slate-800">${escapeHtml(m.hhpn)}</td>
+            <td class="p-2 font-mono text-amber-700 bg-amber-50/50">${escapeHtml(m.generatedFamily)}</td>
+          </tr>
+        `).join('');
+        document.getElementById('missingNoticeModal').classList.remove('hidden');
+      }
+    }
+
+    function openOutlookWebNotice() {
+      if (!currentMailData.to) return alert("請先產生信件！");
+      document.getElementById('modalCcDisplay').textContent = currentMailData.cc;
+      document.getElementById('modalCopyNotice').classList.add('hidden');
+      document.getElementById('webMailModal').classList.remove('hidden');
+    }
+
+    function closeOutlookWebNotice() {
+      document.getElementById('webMailModal').classList.add('hidden');
+    }
+
+    function copyModalCc() {
+      navigator.clipboard.writeText(currentMailData.cc).then(() => {
+        document.getElementById('modalCopyNotice').classList.remove('hidden');
+        setTimeout(() => document.getElementById('modalCopyNotice').classList.add('hidden'), 3500);
+      });
+    }
+
+    function proceedToWebOutlook() {
+      closeOutlookWebNotice();
+      const body = document.getElementById('mailBody').value;
+      const toList = currentMailData.to.replace(/;/g, ",");
+      const url = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(toList)}&subject=${encodeURIComponent(currentMailData.subject)}&body=${encodeURIComponent(body)}`;
+      window.open(url, '_blank');
+    }
+
+    function copyEmailContent() {
+      if (!currentMailData.to) return alert("請先產生信件！");
+      const full = `收件人：${currentMailData.to}\n副本 (CC)：${currentMailData.cc}\n主旨：${currentMailData.subject}\n\n${document.getElementById('mailBody').value}`;
+      navigator.clipboard.writeText(full).then(() => {
+        document.getElementById('copyNotice').classList.remove('hidden');
+        setTimeout(() => document.getElementById('copyNotice').classList.add('hidden'), 4000);
+      });
+    }
+
+    function downloadEml() {
+      if (!currentMailData.to) return alert("請先產生信件！");
+      const body = document.getElementById('mailBody').value;
+      const eml = `To: ${currentMailData.to}\nCc: ${currentMailData.cc}\nSubject: =?UTF-8?B?${btoa(unescape(encodeURIComponent(currentMailData.subject)))}?=\nX-Unsent: 1\nContent-Type: text/plain; charset=utf-8\n\n${body}`;
+      const blob = new Blob([eml], { type: 'message/rfc822' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${currentMailData.subject.replace(/[\\/:*?"<>|]/g, '_')}.eml`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function sendViaMailto() {
+      if (!currentMailData.to) return alert("請先產生信件！");
+      const mailto = `mailto:${encodeURIComponent(currentMailData.to)}?subject=${encodeURIComponent(currentMailData.subject)}&cc=${encodeURIComponent(currentMailData.cc)}&body=${encodeURIComponent(document.getElementById('mailBody').value)}`;
+      window.location.href = mailto;
+    }
+
+    function renderCompareDetailTable() {
+      const model = document.getElementById('modelSelect').value.toLowerCase();
+      const owner = document.getElementById('ownerSelect').value.toLowerCase();
+      const hh = document.getElementById('hhSearch').value.trim().toLowerCase();
+      const type = document.getElementById('typeSelect').value;
+      const modelH = findHeader(compareHeaders, "Model Name") || "Model Name";
+      const hhH = findHeader(compareHeaders, "HH P/N") || findHeader(compareHeaders, "Product P/N") || "HH P/N";
+
+      const filtered = compareResults.filter(r => {
+        const okModel = !model || normalize(r[modelH]).toLowerCase() === model;
+        const okOwner = !owner || normalize(r["Owner"]).toLowerCase() === owner;
+        const okHH = !hh || normalize(r[hhH]).toLowerCase().includes(hh);
+        const okType = !type || r["資料類型"] === type;
+        return okModel && okOwner && okHH && okType;
+      });
+
+      document.getElementById('resultInfo').textContent = `顯示 ${filtered.length.toLocaleString()} 筆 / 全部 ${compareResults.length.toLocaleString()} 筆`;
+
+      if (!filtered.length) {
+        document.getElementById('tableWrap').innerHTML = '<div class="p-6 text-center text-slate-400">沒有符合條件的資料</div>';
+        return filtered;
+      }
+
+      const expHeaders = ["資料類型", ...compareHeaders];
+      let html = "<table><thead><tr>" + expHeaders.map(h => `<th>${escapeHtml(h)}</th>`).join('') + "</tr></thead><tbody>";
+
+      html += filtered.map(r => {
+        return "<tr>" + expHeaders.map(h => {
+          const val = r[h] ?? "";
+          if (h === "資料類型") {
+            const cls = val === "上週已解決" ? "bg-emerald-100 text-emerald-800" : val === "上週仍存在" ? "bg-orange-100 text-orange-800" : "bg-blue-100 text-blue-800";
+            return `<td><span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}">${escapeHtml(val)}</span></td>`;
+          }
+          return `<td>${escapeHtml(String(val))}</td>`;
+        }).join('') + "</tr>";
+      }).join('');
+
+      html += "</tbody></table>";
+      document.getElementById('tableWrap').innerHTML = html;
+      return filtered;
+    }
+
+    ["modelSelect", "ownerSelect", "hhSearch", "typeSelect"].forEach(id => {
+      document.getElementById(id).addEventListener('input', renderCompareDetailTable);
+      document.getElementById(id).addEventListener('change', renderCompareDetailTable);
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      document.getElementById('modelSelect').value = "";
+      document.getElementById('ownerSelect').value = "";
+      document.getElementById('hhSearch').value = "";
+      document.getElementById('typeSelect').value = "";
+      renderCompareDetailTable();
+    });
+
+    async function downloadCompareRows(rows, filename, includeType = true) {
+      if (!rows.length) return alert("沒有資料可下載！");
+      const expHeaders = includeType ? ["資料類型", ...compareHeaders] : [...compareHeaders];
+      const aoa = [expHeaders, ...rows.map(r => expHeaders.map(h => r[h] ?? ""))];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      applyHeaderStyle(ws);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "比對結果");
+      await saveWorkbookWithPicker(wb, filename);
+    }
+
+    function openModal() { document.getElementById('downloadModal').classList.remove('hidden'); }
+    function closeModal() { document.getElementById('downloadModal').classList.add('hidden'); }
+
+    document.getElementById('downloadPendingBtn').addEventListener('click', () => {
+      const p = compareResults.filter(r => r["資料類型"] !== "上週已解決");
+      if (!p.length) return alert("無未結案資料！");
+      openModal();
+    });
+
+    async function executePendingDownload(includeType) {
+      closeModal();
+      const p = compareResults.filter(r => r["資料類型"] !== "上週已解決");
+      const dateStr = module2FileDate || new Date().toISOString().slice(0,10).replace(/-/g,"");
+      const fn = includeType ? `Excel_未結案資料_含資料類型_${dateStr}.xlsx` : `Excel_未結案資料_純原始欄位_${dateStr}.xlsx`;
+      await downloadCompareRows(p, fn, includeType);
+    }
+
+    document.getElementById('downloadAllBtn').addEventListener('click', async () => {
+      const dateStr = module2FileDate || new Date().toISOString().slice(0,10).replace(/-/g,"");
+      await downloadCompareRows(compareResults, `Excel_每週比對_全部資料_${dateStr}.xlsx`, true);
+    });
+
+    document.getElementById('downloadFilteredBtn').addEventListener('click', async () => {
+      const f = renderCompareDetailTable();
+      const dateStr = module2FileDate || new Date().toISOString().slice(0,10).replace(/-/g,"");
+      await downloadCompareRows(f, `Excel_每週比對_搜尋結果_${dateStr}.xlsx`, true);
+    });
+
+    function openRdModal() {
+      document.getElementById('fixedCcBody').innerHTML = fixedCcList.map(i => `
+        <tr>
+          <td><span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-orange-100 text-orange-800">${escapeHtml(i.role)}</span></td>
+          <td><b>${escapeHtml(i.name)}</b></td>
+          <td class="font-mono">${escapeHtml(i.email)}</td>
+        </tr>
+      `).join('');
+      renderRdDbModal();
+      document.getElementById('rdModal').classList.remove('hidden');
+    }
+
+    function closeRdModal() {
+      document.getElementById('rdModal').classList.add('hidden');
+    }
+
+    function filterRdTable() {
+      renderRdDbModal(document.getElementById('rdSearchInput').value);
+    }
+
+    function renderRdDbModal(filterText = "") {
+      const tbody = document.getElementById('rdDbModalBody');
+      const kw = filterText.toLowerCase().trim();
+      const entries = Object.entries(rdDatabase).map(([key, val]) => ({ key, list: getRdList(val) })).filter(({ key, list }) => {
+        if (!kw) return true;
+        return key.toLowerCase().includes(kw) || list.some(m => (m.name && m.name.toLowerCase().includes(kw)) || (m.email && m.email.toLowerCase().includes(kw)) || (m.role && m.role.toLowerCase().includes(kw)));
+      });
+
+      if (!entries.length) {
+        tbody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-slate-400">找不到符合條件的 RD 資料</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = entries.map(({ key, list }) => `
+        <tr>
+          <td><b>${escapeHtml(key)}</b></td>
+          <td>${list.length > 0 ? list.map(m => `<div>${escapeHtml(m.role || '-')}</div>`).join('') : '<span class="text-slate-400">-</span>'}</td>
+          <td>${list.length > 0 ? list.map(m => `<div>${escapeHtml(m.name || '未命名')}</div>`).join('') : '<span class="text-slate-400">(無成員)</span>'}</td>
+          <td>${list.length > 0 ? list.map(m => `<div class="font-mono text-slate-500">${escapeHtml(m.email || '-')}</div>`).join('') : '<span class="text-slate-400">-</span>'}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function downloadRdTemplate() {
+      const aoa = [
+        ["Model Name", "Role", "RD Name", "RD Email"],
+        ["C4143", "SE", "Nick Liao 廖家二", "nick.ce.liao@fii-foxconn.com"],
+        ["C4143", "EE", "Vance Yang 楊竣翔", "vance.ch.yang@fii-foxconn.com"]
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      applyHeaderStyle(ws);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "RD對照表");
+      await saveWorkbookWithPicker(wb, "RD對照表_範本.xlsx");
+    }
+  </script>
+</body>
+</html>
