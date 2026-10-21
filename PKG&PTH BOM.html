@@ -76,6 +76,7 @@
     .btn-warning { background: var(--warning); }
     .btn-warning:hover { background: #b45309; }
 
+    /* Modal 樣式 */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none;
       align-items: center; justify-content: center; z-index: 50; padding: 16px;
@@ -110,7 +111,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
           </svg>
           <p id="bomFileName"><strong>1. 上傳 BOM 檔案 (.xlsx, .xls)</strong></p>
-          <p style="font-size: 11px; color: #94a3b8; margin-top: 2px;">包含 TLA, SMD, PTH, PRESS-FIT (將彈出版次設定)</p>
+          <p style="font-size: 11px; color: #94a3b8; margin-top: 2px;">包含 TLA, SMD, PTH, PRESS-FIT (每次上傳皆會重新詢問版次)</p>
           <input type="file" id="fileBOM" accept=".xlsx,.xls" style="display: none;">
         </div>
 
@@ -205,7 +206,7 @@
     </div>
   </div>
 
-  <!-- 1. 版次輸入 Modal (僅上傳 BOM 觸發) -->
+  <!-- 1. 版次輸入 Modal (每次上傳 BOM 均會觸發) -->
   <div class="modal-overlay" id="revModal">
     <div class="modal">
       <h2>輸入版次 (Revision)</h2>
@@ -260,7 +261,6 @@
       finalPartNo: '',
       sourceCell: '',
       rev: 'A',
-      hasRevSet: false,
       tlaItems: [],
       smdItems: [],
       pthItems: [],
@@ -269,13 +269,13 @@
       allItems: []
     };
 
-    // 1. 上傳工程 BOM
+    // 1. 上傳工程 BOM：每次上傳均重新詢問版次
     setupUploadBox('dropZoneBOM', 'fileBOM', 'bomFileName', (wb, file) => {
       rawBomWb = wb;
-      processData(true);
+      processData(true); // true 代表是 BOM 上傳，每次都必須彈出版次輸入視窗
     });
 
-    // 2. 上傳燒錄清單 (沿用版次)
+    // 2. 上傳燒錄清單 (沿用最新 BOM 設定的版次，不打斷操作)
     setupUploadBox('dropZoneBurn', 'fileBurn', 'burnFileName', (wb, file) => {
       rawBurnWb = wb;
       processData(false);
@@ -531,9 +531,11 @@
 
       parsedData.allItems = [...baseBomItems, ...parsedData.burnAddedItems];
 
-      if (isFromBomUpload && !parsedData.hasRevSet) {
+      // 🌟 核心調整：每次只要上傳/重新選擇 BOM，就必定彈出版次輸入彈窗
+      if (isFromBomUpload) {
         document.getElementById('revModal').style.display = 'flex';
         document.getElementById('revInput').focus();
+        document.getElementById('revInput').select();
       } else {
         renderResults();
       }
@@ -542,7 +544,6 @@
     function confirmRevision() {
       const val = document.getElementById('revInput').value.trim();
       parsedData.rev = val || 'A';
-      parsedData.hasRevSet = true;
       document.getElementById('revModal').style.display = 'none';
       renderResults();
     }
@@ -698,6 +699,7 @@
         wsBOM.mergeCells('D3:E3');
         wsBOM.getCell('D3').value = 'REV OF  PCA';
 
+        // 填入最新版次至 E4 (D4:E4 合併格)
         wsBOM.mergeCells('D4:E4');
         wsBOM.getCell('D4').value = parsedData.rev;
         wsBOM.getCell('D4').fill = yellowFill;
@@ -706,6 +708,7 @@
         wsBOM.getCell('F3').value = 'CUSTOMER';
         wsBOM.getCell('G3').value = parsedData.customer;
 
+        // 填入最新版次至 H3 (H3:I3 合併格)
         wsBOM.mergeCells('H3:I3');
         wsBOM.getCell('H3').value = 'BOM REV:' + parsedData.rev;
 
@@ -750,7 +753,7 @@
           cell.border = thinBorder;
         });
 
-        // Row 7 開始寫入所有物料明細 (VENDOR_STATUS, ROHS_STATUS, Mapping GROUP, GROUP 全部靠左)
+        // Row 7 開始寫入所有物料明細
         parsedData.allItems.forEach((item, index) => {
           const rowNum = 7 + index;
           const row = wsBOM.getRow(rowNum);
@@ -776,7 +779,7 @@
             cell.border = thinBorder;
             cell.font = { name: 'Calibri', size: 10 };
             
-            // 序號、版次、用量置中；其他（包含 J, K, L, M 欄）全數靠左對齊
+            // 序號、版次、用量置中；其他全數靠左對齊
             if ([1, 4, 8].includes(c)) {
               cell.alignment = { horizontal: 'center', vertical: 'middle' };
             } else {
@@ -802,7 +805,7 @@
           to: { row: Math.max(6, 6 + parsedData.allItems.length), column: 13 }
         };
 
-        // 3. GROUP 填入格式 工作表 (Calibri)
+        // 3. GROUP 填入格式 工作表
         const wsGroup = workbook.addWorksheet('GROUP 填入格式');
         wsGroup.views = [{ showGridLines: true }];
         wsGroup.getCell('A1').value = 'GROUP 填入格式 (上料BOM)';
@@ -834,7 +837,6 @@
         const buffer = await workbook.xlsx.writeBuffer();
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
-        // 🌟 依需求格式化檔名：PKG&PTH_[正確料號對應的SKU規則]+[版次]_[日期YYYYMMDD].xlsx
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -843,7 +845,6 @@
 
         const defaultFilename = `PKG&PTH_${parsedData.finalPartNo}+${parsedData.rev}_${dateStr}.xlsx`;
 
-        // 優先呼叫原生「另存新檔儲存視窗」
         if (window.showSaveFilePicker) {
           try {
             const handle = await window.showSaveFilePicker({
@@ -862,7 +863,6 @@
           }
         }
 
-        // 降級常規下載
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.style.display = 'none';
