@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BOM 轉 PKG&PTH 處理工具</title>
+  <!-- 引入 SheetJS 與 ExcelJS -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+  <style>
+    :root {
+      --primary: #1e40af;
+      --primary-hover: #1d4ed8;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --success: #059669;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Calibri", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; }
+    body { background-color: var(--bg); color: var(--text-main); min-height: 100vh; padding: 32px 16px; display: flex; flex-direction: column; align-items: center; }
+    .container { width: 100%; max-width: 1180px; }
+    header { text-align: center; margin-bottom: 24px; }
+    header h1 { font-size: 24px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+    header p { color: var(--text-muted); font-size: 14px; }
+    .card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); padding: 24px; margin-bottom: 20px; }
+    
+    .drop-zone {
+      border: 2px dashed #cbd5e1; border-radius: 10px; padding: 36px 20px; text-align: center;
+      cursor: pointer; transition: all 0.2s ease; background-color: #f8fafc;
+    }
+    .drop-zone:hover, .drop-zone.dragover { border-color: var(--primary); background-color: #eff6ff; }
+    .drop-zone p { margin-top: 10px; color: var(--text-muted); font-size: 14px; }
+    .drop-zone strong { color: var(--primary); }
+
+    .result-section { display: none; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; }
+    .badge-green { background: #dcfce7; color: #15803d; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+    .badge-src { padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .badge-tla { background: #e0e7ff; color: #3730a3; }
+    .badge-smd { background: #fef3c7; color: #92400e; }
+    .badge-pth { background: #fce7f3; color: #9d174d; }
+    .badge-pf  { background: #ede9fe; color: #5b21b6; }
+    .badge-group { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .badge-group-label { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; font-weight: 700; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .badge-pcb { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; font-weight: 600; padding: 1px 4px; border-radius: 3px; font-size: 10px; margin-left: 4px; }
+    .badge-fill { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: 10px; padding: 1px 4px; border-radius: 3px; margin-left: 4px; }
+    .badge-status { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; font-size: 11px; padding: 1px 5px; border-radius: 3px; font-weight: 600; }
+    
+    .grid-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 16px; }
+    .info-box { background: #f1f5f9; padding: 12px 14px; border-radius: 8px; border-left: 4px solid var(--primary); }
+    .info-box span { font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 4px; }
+    .info-box div { font-size: 15px; font-weight: 600; color: #1e293b; word-break: break-all; }
+    
+    .sheet-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .sheet-tag { background: #e2e8f0; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+
+    .preview-container { margin-top: 16px; overflow-x: auto; max-height: 340px; border: 1px solid var(--border); border-radius: 8px; }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: "Calibri", sans-serif; }
+    .preview-table th { background: #99cc00; color: #000; font-weight: 700; padding: 8px 10px; border: 1px solid #cbd5e1; white-space: nowrap; position: sticky; top: 0; z-index: 10; }
+    .preview-table td { padding: 6px 10px; border: 1px solid #e2e8f0; white-space: nowrap; color: #334155; }
+    .preview-table tr:nth-child(even) { background: #f8fafc; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 12px 20px; font-size: 15px; font-weight: 600; color: #fff; background: var(--primary); border: none; border-radius: 8px; cursor: pointer; transition: 0.2s; margin-top: 18px; }
+    .btn:hover { background: var(--primary-hover); }
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); display: none;
+      align-items: center; justify-content: center; z-index: 50; padding: 16px;
+    }
+    .modal { background: #fff; border-radius: 12px; width: 100%; max-width: 420px; padding: 24px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+    .modal h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .modal p { font-size: 14px; color: var(--text-muted); margin-bottom: 16px; }
+    .modal input { width: 100%; padding: 10px 14px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 15px; outline: none; margin-bottom: 16px; }
+    .modal-actions { display: flex; justify-content: flex-end; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>BOM 轉 PKG&PTH 處理工具</h1>
+      <p>自動轉換 TLA/SMD/PTH/PF 料號規格、自動補齊 Customer P/N、狀態填寫與 GROUP 規則配置（全表 Calibri 字體）</p>
+    </header>
+
+    <div class="card">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="margin: 0 auto; color: #64748b;">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        <p>拖曳檔案至此，或 <strong>點擊此處選取檔案</strong></p>
+        <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">支援格式：.xlsx, .xls</p>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+      </div>
+    </div>
+
+    <div class="card result-section" id="resultCard">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 12px;">
+        <span style="font-weight: 700; font-size: 16px;">解析完成</span>
+        <span class="badge" id="ruleBadge">規則</span>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <span style="font-size: 13px; color: var(--text-muted);">工作表數量：<strong id="sheetCount" style="color: var(--text-main);">0</strong> 個</span>
+        <div class="sheet-tags" id="sheetTags"></div>
+      </div>
+
+      <div class="grid-info">
+        <div class="info-box">
+          <span>讀取來源</span>
+          <div id="dispSource">-</div>
+        </div>
+        <div class="info-box">
+          <span>TLA SKU (K3)</span>
+          <div id="dispSku">-</div>
+        </div>
+        <div class="info-box">
+          <span>CUSTOMER (TLA D3 ➔ G3)</span>
+          <div id="dispCustomer">-</div>
+        </div>
+        <div class="info-box">
+          <span>GROUP 基準模式</span>
+          <div id="dispGroupType" style="color: var(--primary);">-</div>
+        </div>
+        <div class="info-box">
+          <span>輸入之版次 (E4)</span>
+          <div id="dispRev">-</div>
+        </div>
+        <div class="info-box" style="border-left-color: var(--success); grid-column: 1 / -1;">
+          <span>最終料號組合 (填入 C3 / C4)</span>
+          <div id="dispFinalPartNo" style="color: var(--success); font-size: 18px;">-</div>
+        </div>
+      </div>
+
+      <!-- 物料清單預覽區 -->
+      <div style="margin-top: 20px;">
+        <span style="font-weight: 700; font-size: 14px; color: #334155;">
+          物料接續匯入預覽：
+          TLA (<span id="tlaCount" style="color: #3730a3;">0</span>) + 
+          SMD (<span id="smdCount" style="color: #92400e;">0</span>) + 
+          PTH (<span id="pthCount" style="color: #9d174d;">0</span>) + 
+          PRESS-FIT (<span id="pfCount" style="color: #5b21b6;">0</span>) = 
+          共 <span id="totalItemCount" style="color: var(--primary);">0</span> 筆
+        </span>
+        <div class="preview-container">
+          <table class="preview-table">
+            <thead>
+              <tr>
+                <th>來源</th>
+                <th>Item</th>
+                <th>HH P/N</th>
+                <th>Customer P/N</th>
+                <th>Rev</th>
+                <th>Description</th>
+                <th>Supplier</th>
+                <th>Supplier p/n</th>
+                <th>Usage</th>
+                <th>Location</th>
+                <th>VENDOR_STATUS</th>
+                <th>ROHS_STATUS</th>
+                <th>GROUP</th>
+              </tr>
+            </thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <button class="btn" id="btnDownload" onclick="exportFormattedExcel()">
+        輸出高擬真 PKG&PTH 格式 Excel
+      </button>
+    </div>
+  </div>
+
+  <!-- 版次輸入 Modal -->
+  <div class="modal-overlay" id="revModal">
+    <div class="modal">
+      <h2>輸入版次 (Revision)</h2>
+      <p>檔案讀取完成！請輸入要寫入 <strong>PKG&PTH</strong> 中 <strong>E4</strong> 的版次代碼：</p>
+      <input type="text" id="revInput" placeholder="例如：A 或 X01" value="A">
+      <div class="modal-actions">
+        <button class="btn" style="width: auto; margin-top: 0; padding: 8px 20px;" onclick="confirmRevision()">確定</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let parsedData = {
+      sheets: [],
+      rawPartNo: '',
+      sku: '',
+      customer: '',
+      isMicrosoft: false,
+      finalPartNo: '',
+      sourceCell: '',
+      rev: 'A',
+      tlaItems: [],
+      smdItems: [],
+      pthItems: [],
+      pfItems: [],
+      allItems: []
+    };
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) processFile(e.target.files[0]);
+    });
+
+    function getCellValue(sheet, cellAddr) {
+      const cell = sheet[cellAddr];
+      if (!cell || cell.v === undefined || cell.v === null) return '';
+      return String(cell.v).trim();
+    }
+
+    // GROUP 判斷函數
+    function determineGroup(sourceTag, desc, isMsft) {
+      if (sourceTag === 'TLA') {
+        const descUpper = String(desc || '').toUpperCase();
+        if (descUpper.includes('LABEL') || descUpper.includes('LBL')) {
+          return 'Label';
+        }
+        return isMsft ? 'ASS LOADER' : 'MECH LOADER';
+      }
+
+      if (sourceTag === 'SMD') {
+        return 'SMT';
+      }
+
+      if (sourceTag === 'PTH') {
+        return isMsft ? 'PTH_LOADER' : 'PTH LOADER';
+      }
+
+      if (sourceTag === 'PRESS-FIT') {
+        return isMsft ? 'PF_LOADER' : 'PRESS LOADER';
+      }
+
+      return '';
+    }
+
+    function extractItemsFromSheet(sheet, sourceTag, isMsft) {
+      if (!sheet) return [];
+      const list = [];
+      const range = XLSX.utils.decode_range(sheet['!ref'] || "A1:K100");
+      const maxRow = range.e.r + 1;
+
+      let lastWasPcb = false;
+
+      for (let r = 6; r <= maxRow; r++) {
+        const itemVal = getCellValue(sheet, 'A' + r);
+        let hhPn = getCellValue(sheet, 'B' + r);
+        let custPn = getCellValue(sheet, 'C' + r);
+        const custRev = getCellValue(sheet, 'D' + r);
+        const desc = getCellValue(sheet, 'E' + r);
+        const supplier = getCellValue(sheet, 'F' + r);
+        let supplierPn = getCellValue(sheet, 'G' + r);
+        const usage = getCellValue(sheet, 'H' + r);
+        const location = getCellValue(sheet, 'J' + r);
+
+        if (hhPn !== '' || desc !== '' || itemVal !== '') {
+          let isPcb = false;
+
+          // SMD 頁面 PCB 規則：Location 為 PCB1 / PCB 時，後綴加上「-供應商前兩碼」
+          if (sourceTag === 'SMD') {
+            const locUpper = location.toUpperCase();
+            if (locUpper === 'PCB1' || locUpper === 'PCB' || (lastWasPcb && itemVal === '' && location === '')) {
+              isPcb = true;
+              lastWasPcb = true;
+              const mfrPrefix = supplier.length >= 2 ? supplier.substring(0, 2) : supplier;
+              if (mfrPrefix) {
+                hhPn = hhPn + '-' + mfrPrefix;
+                supplierPn = supplierPn + '-' + mfrPrefix;
+              }
+            } else {
+              lastWasPcb = false;
+            }
+          }
+
+          // Customer P/N 檢查：若為空，則等於 HH P/N 欄位的值
+          let isAutoFilledCustPn = false;
+          if (custPn === '') {
+            custPn = hhPn;
+            isAutoFilledCustPn = true;
+          }
+
+          list.push({
+            source: sourceTag,
+            item: itemVal,
+            hhPn: hhPn,
+            custPn: custPn,
+            rev: custRev,
+            desc: desc,
+            supplier: supplier,
+            supplierPn: supplierPn,
+            usage: usage,
+            location: location,
+            vendorStatus: 'Active',
+            rohsStatus: 'R',
+            isPcb: isPcb,
+            isAutoFilledCustPn: isAutoFilledCustPn,
+            group: determineGroup(sourceTag, desc, isMsft)
+          });
+        }
+      }
+      return list;
+    }
+
+    function processFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        parsedData.sheets = wb.SheetNames;
+        
+        const tla = wb.Sheets['TLA'];
+        if (!tla) {
+          alert("錯誤：未找到名為「TLA」的工作表！");
+          return;
+        }
+
+        const f3 = getCellValue(tla, 'F3');
+        const b3 = getCellValue(tla, 'B3');
+        const k3 = getCellValue(tla, 'K3');
+        const d3 = getCellValue(tla, 'D3');
+
+        parsedData.sku = k3;
+        parsedData.customer = d3 || 'WHITEBOX';
+
+        const custUpper = parsedData.customer.toUpperCase();
+        parsedData.isMicrosoft = custUpper.includes('MICROSOFT') || custUpper === 'MSFT';
+
+        if (f3 !== '') {
+          parsedData.sourceCell = 'F3';
+          parsedData.rawPartNo = f3;
+          parsedData.finalPartNo = f3 + '-G' + k3;
+        } else {
+          parsedData.sourceCell = 'B3';
+          parsedData.rawPartNo = b3;
+          parsedData.finalPartNo = b3 + k3;
+        }
+
+        // 讀取各分頁資料
+        parsedData.tlaItems = extractItemsFromSheet(tla, 'TLA', parsedData.isMicrosoft);
+
+        const smd = wb.Sheets['SMD'];
+        parsedData.smdItems = smd ? extractItemsFromSheet(smd, 'SMD', parsedData.isMicrosoft) : [];
+
+        const pth = wb.Sheets['PTH'];
+        parsedData.pthItems = pth ? extractItemsFromSheet(pth, 'PTH', parsedData.isMicrosoft) : [];
+
+        const pf = wb.Sheets['PRESS-FIT'];
+        parsedData.pfItems = pf ? extractItemsFromSheet(pf, 'PRESS-FIT', parsedData.isMicrosoft) : [];
+
+        parsedData.allItems = [
+          ...parsedData.tlaItems, 
+          ...parsedData.smdItems, 
+          ...parsedData.pthItems, 
+          ...parsedData.pfItems
+        ];
+
+        document.getElementById('revModal').style.display = 'flex';
+        document.getElementById('revInput').focus();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function confirmRevision() {
+      const val = document.getElementById('revInput').value.trim();
+      parsedData.rev = val || 'A';
+      document.getElementById('revModal').style.display = 'none';
+      renderResults();
+    }
+
+    function renderResults() {
+      document.getElementById('resultCard').style.display = 'block';
+      document.getElementById('sheetCount').innerText = parsedData.sheets.length;
+      
+      const tags = document.getElementById('sheetTags');
+      tags.innerHTML = '';
+      parsedData.sheets.forEach(name => {
+        const tag = document.createElement('span');
+        tag.className = 'sheet-tag';
+        tag.innerText = name;
+        tags.appendChild(tag);
+      });
+
+      document.getElementById('dispSource').innerText = `${parsedData.rawPartNo} (取自 ${parsedData.sourceCell})`;
+      document.getElementById('dispSku').innerText = parsedData.sku || '(空白)';
+      document.getElementById('dispCustomer').innerText = parsedData.customer;
+      document.getElementById('dispGroupType').innerText = parsedData.isMicrosoft ? 'Microsoft / MSFT 模式' : '其他客戶 (Other) 模式';
+      document.getElementById('dispRev').innerText = parsedData.rev;
+      document.getElementById('dispFinalPartNo').innerText = parsedData.finalPartNo;
+
+      const badge = document.getElementById('ruleBadge');
+      if (parsedData.sourceCell === 'F3') {
+        badge.innerText = '已套用 F3 優先規則 (料號-G+SKU)';
+        badge.className = 'badge badge-green';
+      } else {
+        badge.innerText = 'F3 無值，已改採 B3 規則 (料號+SKU)';
+        badge.className = 'badge badge-blue';
+      }
+
+      document.getElementById('tlaCount').innerText = parsedData.tlaItems.length;
+      document.getElementById('smdCount').innerText = parsedData.smdItems.length;
+      document.getElementById('pthCount').innerText = parsedData.pthItems.length;
+      document.getElementById('pfCount').innerText = parsedData.pfItems.length;
+      document.getElementById('totalItemCount').innerText = parsedData.allItems.length;
+
+      const tbody = document.getElementById('previewBody');
+      tbody.innerHTML = '';
+      parsedData.allItems.forEach(it => {
+        const tr = document.createElement('tr');
+        let srcBadgeClass = 'badge-tla';
+        if (it.source === 'SMD') srcBadgeClass = 'badge-smd';
+        if (it.source === 'PTH') srcBadgeClass = 'badge-pth';
+        if (it.source === 'PRESS-FIT') srcBadgeClass = 'badge-pf';
+
+        const groupBadgeClass = it.group === 'Label' ? 'badge-group-label' : 'badge-group';
+        const pcbTag = it.isPcb ? '<span class="badge-pcb">-前兩碼</span>' : '';
+        const fillTag = it.isAutoFilledCustPn ? '<span class="badge-fill">同HH</span>' : '';
+
+        tr.innerHTML = `
+          <td><span class="badge-src ${srcBadgeClass}">${it.source}</span></td>
+          <td>${it.item}</td>
+          <td><strong>${it.hhPn}</strong>${pcbTag}</td>
+          <td>${it.custPn}${fillTag}</td>
+          <td>${it.rev}</td>
+          <td>${it.desc}</td>
+          <td>${it.supplier}</td>
+          <td>${it.supplierPn}</td>
+          <td>${it.usage}</td>
+          <td>${it.location}</td>
+          <td><span class="badge-status">${it.vendorStatus}</span></td>
+          <td><span class="badge-status">${it.rohsStatus}</span></td>
+          <td><span class="${groupBadgeClass}">${it.group}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function exportFormattedExcel() {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = "Foxconn";
+      
+      const thinBorder = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+      const yellowFill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFFFFF00' }
+      };
+      const greenFill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF99CC00' }
+      };
+
+      // ==========================================
+      // 1. ECN 工作表 (全部統一 Calibri)
+      // ==========================================
+      const wsECN = workbook.addWorksheet('ECN');
+      wsECN.views = [{ showGridLines: true }];
+      wsECN.getCell('A1').value = '工程變更通知單';
+      wsECN.getCell('A2').value = '(ENGINEERING CHANGE NOTICE)';
+      wsECN.getCell('A3').value = 'ECN NO.';
+      wsECN.getCell('H3').value = '名';
+      wsECN.getCell('I3').value = 'Blade Miss Piggy  SFP+PCBA  BAC-00013-00+8 HH  BOM';
+      wsECN.getCell('A4').value = '變更類別';
+      wsECN.getCell('C4').value = '  □ 主要      ■一般';
+      wsECN.getCell('H4').value = '稱';
+      wsECN.getCell('A5').value = '文件編號';
+      wsECN.getCell('C5').value = 'BAC-00013-00';
+      wsECN.getCell('F5').value = '版';
+      wsECN.getCell('G5').value = parsedData.rev;
+      wsECN.getCell('H5').value = '原';
+      wsECN.getCell('I5').value = '初版發行';
+      wsECN.getCell('A6').value = '( 料號 )';
+      wsECN.getCell('F6').value = '次';
+      wsECN.getCell('H6').value = '因';
+      wsECN.getCell('A7').value = '通知類別';
+      wsECN.getCell('C7').value = '  ■發行      □變更   □ 廢止';
+
+      wsECN.eachRow((row) => {
+        row.eachCell((cell) => {
+          cell.font = { name: 'Calibri', size: 10 };
+        });
+      });
+      wsECN.getCell('A1').font = { name: 'Calibri', size: 14, bold: true };
+      wsECN.getCell('A2').font = { name: 'Calibri', size: 12, bold: true };
+
+      // ==========================================
+      // 2. BOM 工作表 (全部統一 Calibri)
+      // ==========================================
+      const wsBOM = workbook.addWorksheet('BOM');
+      wsBOM.views = [{ showGridLines: true }];
+
+      // 設定欄寬
+      const colWidths = [8, 24, 24, 8, 42, 16, 24, 10, 16, 16, 14, 16, 18];
+      colWidths.forEach((w, i) => wsBOM.getColumn(i + 1).width = w);
+
+      wsBOM.getRow(1).height = 20;
+      wsBOM.getRow(2).height = 22;
+      wsBOM.getRow(3).height = 22;
+      wsBOM.getRow(4).height = 24;
+      wsBOM.getRow(5).height = 20;
+      wsBOM.getRow(6).height = 26;
+
+      wsBOM.mergeCells('A1:I1');
+      wsBOM.getCell('A1').value = 'FOXCONN PRECISION COMPONENT(SHENZHEN) CO,LTD';
+      wsBOM.getCell('A1').font = { name: 'Calibri', size: 12, bold: true };
+      wsBOM.getCell('A1').alignment = { horizontal: 'center', vertical: 'middle' };
+
+      wsBOM.mergeCells('A2:I2');
+      wsBOM.getCell('A2').value = 'BILL    OF    MATERIAL';
+      wsBOM.getCell('A2').font = { name: 'Calibri', size: 12, bold: true };
+      wsBOM.getCell('A2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+      // Row 3 & 4
+      wsBOM.mergeCells('A3:B4');
+      wsBOM.getCell('A3').value = 'PCA P/N';
+
+      // C3:C4 (料號 + 黃底)
+      wsBOM.mergeCells('C3:C4');
+      wsBOM.getCell('C3').value = parsedData.finalPartNo;
+      wsBOM.getCell('C3').fill = yellowFill;
+      wsBOM.getCell('C3').font = { name: 'Calibri', size: 11, bold: true };
+
+      // D3:E3 (REV OF PCA 標題)
+      wsBOM.mergeCells('D3:E3');
+      wsBOM.getCell('D3').value = 'REV OF  PCA';
+
+      // D4:E4 (版次 + 黃底)
+      wsBOM.mergeCells('D4:E4');
+      wsBOM.getCell('D4').value = parsedData.rev;
+      wsBOM.getCell('D4').fill = yellowFill;
+      wsBOM.getCell('D4').font = { name: 'Calibri', size: 11, bold: true };
+
+      // F3:F4 (CUSTOMER)
+      wsBOM.getCell('F3').value = 'CUSTOMER';
+
+      // G3:G4 (填入上傳檔案 TLA 的 D3 內容)
+      wsBOM.getCell('G3').value = parsedData.customer;
+
+      // H3:I3 (BOM REV)
+      wsBOM.mergeCells('H3:I3');
+      wsBOM.getCell('H3').value = 'BOM REV:' + parsedData.rev;
+
+      wsBOM.mergeCells('H4:I4');
+      wsBOM.mergeCells('K3:M4');
+
+      for (let r = 3; r <= 4; r++) {
+        for (let c = 1; c <= 13; c++) {
+          const cell = wsBOM.getRow(r).getCell(c);
+          cell.border = thinBorder;
+          if (!cell.font) {
+            cell.font = { name: 'Calibri', size: 11 };
+          } else {
+            cell.font.name = 'Calibri';
+          }
+          if (!cell.alignment || !cell.alignment.horizontal) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          }
+        }
+      }
+
+      // Row 5 (SMT)
+      wsBOM.mergeCells('A5:M5');
+      wsBOM.getCell('A5').value = 'SMT';
+      wsBOM.getCell('A5').alignment = { horizontal: 'center', vertical: 'middle' };
+      wsBOM.getCell('A5').font = { name: 'Calibri', size: 11, bold: true };
+      for (let c = 1; c <= 13; c++) {
+        const cell = wsBOM.getRow(5).getCell(c);
+        cell.border = thinBorder;
+        cell.font = { name: 'Calibri', size: 11, bold: true };
+      }
+
+      // Row 6 (綠色表頭)
+      const headers = [
+        'Item', 'HH P/N', 'Customer P/N', 'Rev', 'Description', 
+        'Supplier', 'Supplier p/n', 'Usage', 'Location', 
+        'VENDOR_STATUS', 'ROHS_STATUS', 'Mapping\nGROUP', 'GROUP'
+      ];
+      const row6 = wsBOM.getRow(6);
+      headers.forEach((title, idx) => {
+        const cell = row6.getCell(idx + 1);
+        cell.value = title;
+        cell.fill = greenFill;
+        cell.font = { name: 'Calibri', size: 11, bold: true };
+        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+        cell.border = thinBorder;
+      });
+
+      // ==========================================
+      // Row 7 開始寫入物料明細
+      // ==========================================
+      parsedData.allItems.forEach((item, index) => {
+        const rowNum = 7 + index;
+        const row = wsBOM.getRow(rowNum);
+        row.height = 20;
+
+        const parseNum = (v) => (!isNaN(v) && v !== '' && v !== null) ? Number(v) : v;
+
+        row.getCell(1).value = parseNum(item.item);
+        row.getCell(2).value = item.hhPn;
+        row.getCell(3).value = item.custPn;
+        row.getCell(4).value = item.rev;
+        row.getCell(5).value = item.desc;
+        row.getCell(6).value = item.supplier;
+        row.getCell(7).value = item.supplierPn;
+        row.getCell(8).value = parseNum(item.usage);
+        row.getCell(9).value = item.location;
+        row.getCell(10).value = item.vendorStatus;
+        row.getCell(11).value = item.rohsStatus;
+        row.getCell(13).value = item.group;
+
+        for (let c = 1; c <= 13; c++) {
+          const cell = row.getCell(c);
+          cell.border = thinBorder;
+          cell.font = { name: 'Calibri', size: 10 };
+          if ([1, 4, 8, 10, 11, 13].includes(c)) {
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+          } else {
+            cell.alignment = { horizontal: 'left', vertical: 'middle' };
+          }
+        }
+      });
+
+      const totalRows = Math.max(7 + parsedData.allItems.length, 50);
+      for (let r = 7 + parsedData.allItems.length; r <= totalRows; r++) {
+        const row = wsBOM.getRow(r);
+        row.height = 20;
+        for (let c = 1; c <= 13; c++) {
+          const cell = row.getCell(c);
+          cell.border = thinBorder;
+          cell.font = { name: 'Calibri', size: 10 };
+        }
+      }
+
+      wsBOM.autoFilter = {
+        from: { row: 6, column: 1 },
+        to: { row: Math.max(6, 6 + parsedData.allItems.length), column: 13 }
+      };
+
+      // ==========================================
+      // 3. GROUP 填入格式 工作表 (全部統一 Calibri)
+      // ==========================================
+      const wsGroup = workbook.addWorksheet('GROUP 填入格式');
+      wsGroup.views = [{ showGridLines: true }];
+      wsGroup.getCell('A1').value = 'GROUP 填入格式 (上料BOM)';
+      wsGroup.getCell('A2').value = 'LEVEL';
+      wsGroup.getCell('B2').value = 'L6';
+      wsGroup.getCell('E2').value = 'L10';
+      wsGroup.getCell('H2').value = 'REMARK';
+      
+      const groupRows = [
+        ['Customer', 'Other', 'MSFT', 'NVIDIA', 'Other', 'MSFT', 'NVIDIA'],
+        ['無需上料', 'SMT or N/A or Any remarks ', 'SMT or N/A or Any remarks ', 'SMT or N/A or Any remarks ', ' N/A or Any remarks ', ' N/A or Any remarks ', ' N/A or Any remarks '],
+        ['上料', 'PTH LOADER', 'PTH_LOADER', 'PTH LOADER', 'KITTING LOADER', 'ASSY LOADER', 'SYS_ASSY_LOADER'],
+        ['上料', 'PRESS LOADER', 'PF_LOADER', 'PRESS LOADER', '', '', ''],
+        ['上料', 'MECH LOADER', 'ASS LOADER', 'MECH LOADER', '', '', ''],
+        ['上料', 'N/A', 'MECH LOADER2', 'N/A', '', '', ''],
+        ['配送', 'TVI', 'TVI', 'TVI', 'N/A', 'N/A', 'N/A'],
+        ['配送', 'PACKING', 'PACKING', 'PACKING', 'N/A', 'N/A', 'N/A']
+      ];
+      groupRows.forEach((rData, rIdx) => {
+        rData.forEach((val, cIdx) => {
+          wsGroup.getRow(rIdx + 3).getCell(cIdx + 1).value = val;
+        });
+      });
+
+      wsGroup.eachRow((row) => {
+        row.eachCell((cell) => {
+          cell.font = { name: 'Calibri', size: 10 };
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PKG&PTH_${parsedData.finalPartNo}_Rev${parsedData.rev}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
