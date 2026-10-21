@@ -6,6 +6,8 @@
 <a href="https://1092024.github.io/Tools/Owner_RD_Mix.html">兩種功能合併</a>
 <br>
 <a href="https://1092024.github.io/Tools/single week.html">匹配單週</a>
+<br>
+<a href="https://1092024.github.io/Tools/PKG&PTH BOM.html">PKG&PTH BOM</a>
 
 <h2>History</h2>
 <h4>2026/09/24</h4>
@@ -28,3 +30,6 @@ RD&weekly_compare_v1.3 add no Part family download
 <h4>2026/10/02</h4>
 Owner_RD_Mix_v1.0 release
 single week_v1.0 release
+---------------------------------
+<h4>2026/10/21</h4>
+PKG&PTH BOM_v1.0 release
