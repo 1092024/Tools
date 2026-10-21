@@ -98,8 +98,8 @@
 
   <div class="container">
     <header>
-      <h1>BOM 轉 PKG&PTH 處理工具</h1>
-      <p>自動轉換 TLA/SMD/PTH/PF 料號規格、比對燒錄清單、PCB 大寫廠商碼後綴與標準檔名輸出</p>
+      <h1>BOM 轉 PKG&PTH 小工具</h1>
+      <p>For L6 BOM+燒錄清單，請使用E-BOM和特定樣式燒錄清單</p>
     </header>
 
     <div class="card">
@@ -109,7 +109,7 @@
           <svg width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" style="color: #64748b;">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
           </svg>
-          <p id="bomFileName"><strong>1. 上傳工程 BOM 檔案 (.xlsx, .xls)</strong></p>
+          <p id="bomFileName"><strong>1. 上傳 BOM 檔案 (.xlsx, .xls)</strong></p>
           <p style="font-size: 11px; color: #94a3b8; margin-top: 2px;">包含 TLA, SMD, PTH, PRESS-FIT (將彈出版次設定)</p>
           <input type="file" id="fileBOM" accept=".xlsx,.xls" style="display: none;">
         </div>
@@ -120,7 +120,7 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
           <p id="burnFileName"><strong>2. 上傳燒錄清單檔案 (選填 / .xlsx, .xls)</strong></p>
-          <p style="font-size: 11px; color: #94a3b8; margin-top: 2px;">自動比對 B3 位置並帶入 F3 燒錄料號 (沿用 BOM 版次)</p>
+          <p style="font-size: 11px; color: #94a3b8; margin-top: 2px;">自動比對 B3 位置並帶入 F3 燒錄料號</p>
           <input type="file" id="fileBurn" accept=".xlsx,.xls" style="display: none;">
         </div>
       </div>
@@ -209,7 +209,7 @@
   <div class="modal-overlay" id="revModal">
     <div class="modal">
       <h2>輸入版次 (Revision)</h2>
-      <p>工程 BOM 讀取完成！請輸入要寫入 <strong>PKG&PTH</strong> 中 <strong>E4</strong> 的版次代碼：</p>
+      <p>工程 BOM 讀取完成！請輸入要寫入 <strong>PKG&PTH</strong> 中的版次代碼：</p>
       <input type="text" id="revInput" placeholder="例如：A 或 X01" value="A">
       <div class="modal-actions">
         <button class="btn" style="width: auto; margin-top: 0; padding: 8px 20px;" onclick="confirmRevision()">確定</button>
@@ -224,7 +224,7 @@
         <svg width="24" height="24" fill="none" stroke="#d97706" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
         </svg>
-        <h2 style="margin-bottom: 0;">工程輸出前重要提醒</h2>
+        <h2 style="margin-bottom: 0;">輸出前重要提醒</h2>
       </div>
       
       <div class="notice-box">
